@@ -155,11 +155,69 @@ def bilateral_blur(img, diameter = 20, sigmaColor = 20, sigmaSpace = 20):
     image = copy(img)
     return cv2.bilateralFilter(image, diameter, sigmaColor, sigmaSpace)
 
-def edge_extraction(img, d = 40, sc = 20, ss = 20, t1 = 50, t2 = 50):
-    image = bilateral_blur(img, d, sc, ss)
+def edge_extraction(img, d1 = 10, d2 = 10, t1 = 30, t2 = 30):
+    image = denoise(img, d1, d2)
     edges = cv2.Canny(image,t1,t2)
-    print(edges.shape)
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3,3))
+    image = cv2.morphologyEx(edges, cv2.MORPH_CLOSE, kernel)
     return edges
+
+def word_extraction(img, max_area_fraction = .4):
+    new_img = copy(img)
+    if len(img.shape) > 2:
+        new_img = cv2.cvtColor(new_img, cv2.COLOR_BGR2GRAY)
+    edges = cv2.Canny(copy(new_img), 400, 400)
+    kernel = np.ones((5,5))
+    edges = cv2.dilate(edges, kernel)
+    edges = cv2.morphologyEx(edges, cv2.MORPH_CLOSE, kernel)
+    contours, heirarchy = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    good_contours = []
+    max_area = max_area_fraction*img.shape[0]*img.shape[1]
+    for contour in contours:
+        if cv2.contourArea(contour) < max_area:
+            good_contours.append(contour)
+    cv2.drawContours(new_img, good_contours, -1, 0, cv2.FILLED)
+    return crop_image(img, new_img)
+    
+
+def get_blobs(img):
+    image = edge_extraction(img)
+    close_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3,3))
+#    open_kernel =cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (1,1))
+#    image = cv2.morphologyEx(image, cv2.MORPH_OPEN, open_kernel)
+    image = cv2.morphologyEx(image, cv2.MORPH_CLOSE, close_kernel)
+    contours, heirarchy = cv2.findContours(image, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    blank = np.zeros(image.shape)
+    cv2.drawContours(blank, contours,  -1, 255, cv2.FILLED)
+    return blank
+
+def lbp(img):
+    image = denoise(img)
+    lbp_image = local_binary_pattern(img, 1, 2, method = 'uniform')
+    return lbp_image
+
+def crop_image(img, reference_image = None, upper_bound = 220, lower_bound = 50):
+    if reference_image is None:
+        reference_image = copy(img)
+#    reference_image = denoise(reference_image)
+    if len(reference_image.shape) > 2:
+        reference_image = cv2.cvtColor(reference_image, cv2.COLOR_BGR2GRAY)
+    image_size = (img.shape[0], img.shape[1])
+    valid_coords = np.argwhere( (reference_image > lower_bound)*(reference_image < upper_bound) )
+    x0, y0 = valid_coords.min(axis = 0)
+    x1, y1 = valid_coords.max(axis = 0) + 1
+    if len(reference_image.shape) > 2:
+        cropped_image = img[x0:x1, y0:y1]
+    else:
+        cropped_image = img[x0:x1, y0:y1, :]
+    return cv2.resize(cropped_image, image_size)
+
+def denoise(img, d1 = 8, d2 = 8):
+    if len(img.shape) > 2:
+        denoiser = lambda x: cv2.fastNlMeansDenoisingColored(x, None, d1, d2)
+    else:
+        denoiser = lambda x: cv2.fastNlMeansDenoising(x, None, d1, d2)
+    return denoiser(img)
 
 def show_images(image_set, compare_func = None):
     window_name = 'images'
@@ -171,6 +229,11 @@ def show_images(image_set, compare_func = None):
                                          np.hstack([image_set[x], compare_func(copy(image_set[x]))]))
     cv2.createTrackbar(window_name, window_name, 0, len(image_set) - 1, on_change)
     on_change(0)
+    
+def preprocess(images):
+    cropped = [word_extraction(i) for i in images]
+    cleaned = [denoise(i) for i in cropped]
+    return cleaned
 
 get_classes = lambda file_dict: np.hstack([k*np.ones((len(v), )) for k,v in file_dict.items()]).astype('int32')
 
@@ -185,6 +248,7 @@ for files in sample_images.values():
     images.extend( [cv2.cvtColor(cv2.resize(cv2.imread(im), (300,300), interpolation = cv2.INTER_LINEAR), cv2.COLOR_BGR2RGB) for im in files] )
 grays = [cv2.cvtColor(copy(im), cv2.COLOR_BGR2GRAY) for im in images]
 
+clean_images = preprocess(images)
 #lbp = lambda x: local_binary_pattern(copy(x), 1, 2, method = 'ror')
 #gaussian = lambda x: cv2.GaussianBlur(copy(x), (5,5), 0)
-show_images(grays, edge_extraction)
+show_images(clean_images)
