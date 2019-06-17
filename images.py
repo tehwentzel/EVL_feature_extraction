@@ -13,7 +13,7 @@ def get_image_files(root = 'data\images_2\**\*.jpg',
     if classes is None:
         classes = Constants.classes
     files = glob.glob(root, recursive = True)
-    files = list(set(files))
+    files = sorted(set(files))
     images = OrderedDict()
     for c in classes:
         images[classes.index(c)] = []
@@ -66,6 +66,8 @@ def word_extraction(img, max_area_fraction = .4,
     if len(img.shape) > 2:
         new_img = cv2.cvtColor(new_img, cv2.COLOR_BGR2GRAY)
 #    new_img = cv2.bilateralFilter(new_img, 20,20, 20)
+    #applies erode using a vertical and horizontal line kernel.  should make black on white text bolder?
+#    new_img = cv2.dilate(new_img, np.ones((5,5)))
     edges = cv2.Canny(copy(new_img), lower_canny_thresh, upper_canny_thresh)
     edges = cv2.dilate(edges, dilation_kernel)
     contours, heirarchy = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
@@ -76,11 +78,12 @@ def word_extraction(img, max_area_fraction = .4,
             good_contours.append(contour)
     cv2.drawContours(new_img, good_contours, -1, 0, cv2.FILLED)
     return crop_image(img, new_img)
-    
-def lbp(img):
-    image = denoise(img)
-    lbp_image = local_binary_pattern(image, 1, 2, method = 'uniform')
-    return lbp_image
+
+def erode_lines(image, size = 5):
+    base_kernel = np.ones((size,))
+    image = cv2.erode(image, base_kernel.reshape(-1,1))
+    image = cv2.erode(image, base_kernel.reshape(1,-1))
+    return image
 
 def crop_image(img, reference_image = None, upper_bound = 220, lower_bound = 80):
     if reference_image is None:
