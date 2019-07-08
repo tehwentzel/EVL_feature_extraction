@@ -10,29 +10,30 @@ from constants import Constants
 from features import *
 
     
-from sklearn.ensemble import RandomForestClassifier
+from sklearn.linear_model import SGDClassifier, LogisticRegression
 from sklearn.model_selection import train_test_split
-    
-def test_classifier(x,y):
-    x_train, x_test, y_train, y_test = train_test_split(x, y, stratify = y)
-    #pca = PCA(n_components = None)
-    #x_train = pca.fit_transform(x_train)
-    #x_test = pca.transform(x_test)
-    
-    model = RandomForestClassifier(n_estimators = 60,
-                                   max_depth = 25,
-                                   min_samples_split = 2,
-                                   random_state = 0)
-    model.fit(x_train,y_train)
-    result = model.score(x_test, y_test)
-    print(result)
-    return (result, model.feature_importances_)
+from sklearn.ensemble import ExtraTreesClassifier
+from sklearn.feature_selection import RFE, RFECV
 
-#sample_images = get_image_files(root = 'data/test*/**/*.jpg', classes = Constants.test_classes)
-#clean_images = preprocess_dict(sample_images)
-#show_images(clean_images)
-all_images = get_image_files(classes = Constants.test_classes)
-all_images = preprocess_dict(all_images)
-y = get_classes(all_images)
-x = get_color_histograms(all_images, bins = 5)
-result, importances = test_classifier(x,y)
+
+generator = FeatureGenerator(classes = Constants.test_classes, denoise = False, crop = True, 
+                             remove_borders= False)
+all_features = []
+all_labels = []
+all_images = []
+batch_size = 15
+total = np.sum(generator.inverse_class_positions)
+for _ in range(int(total/batch_size)):
+    features, labels = generator.get_features(batch_size) 
+    all_features.extend(features)
+#    images, labels = generator.get_images(batch_size)
+#    all_images.extend(images)
+    all_labels.extend(labels)
+x = np.vstack(all_features)
+y = np.vstack(all_labels)
+
+x_train, x_test, y_train, y_test = train_test_split(x, y, stratify = y)
+
+tree = ExtraTreesClassifier(n_estimators = 25).fit(x_train, y_train.ravel())
+print(tree.feature_importances_)
+print(tree.score(x_test, y_test.ravel()))
