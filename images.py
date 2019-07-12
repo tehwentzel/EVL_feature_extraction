@@ -10,20 +10,21 @@ from constants import Constants
 from crop import grabcut_crop, crop
 
 class ImageGenerator():
-    
+
     def __init__(self, root = 'data\images_2\**\*.jpg', classes = None,
-                 crop = True, scale = Constants.image_size, 
+                 crop = True, scale = Constants.image_size,
                  remove_borders = True, denoise = True):
         self.file_dict = self.get_image_files(root, classes)
         class_count = [len(x) for x in self.file_dict.values()]
         self.class_ratios = np.array([x/np.sum(class_count) for x in class_count])
         self.inverse_class_positions = [x - 1 for x in class_count]
-        
+
         self.crop_flag = crop
         self.scale = scale
         self.remove_borders_flag = remove_borders
         self.denoise_flag = denoise
-        
+        self.num_images = np.sum(class_count)
+
     def get_image_files(self, root, classes = None):
         if classes is None:
             classes = Constants.classes
@@ -42,7 +43,7 @@ class ImageGenerator():
                     new_files.remove(file)
             files = new_files
         return images
-    
+
     def get_images(self, num_images = 10, base_classes = None):
         if base_classes is None:
             base_classes = list(self.file_dict.keys())
@@ -63,19 +64,18 @@ class ImageGenerator():
             images.append( self.process_image_file(image_file) )
             labels.append(label)
         return images, labels
-            
+
     def reset_classes(self, count = 0):
         if np.sum(self.inverse_class_positions) <= count:
             self.inverse_class_positions = [len(x) - 1 for x in self.file_dict.values()]
             return True
         else:
             return False
-        
+
     def process_image_file(self, image_file):
         image = cv2.imread(image_file)
-        print(image.shape)
         if self.crop_flag:
-            image = grabcut_crop(image)
+            image = crop(image)
         if self.denoise_flag:
             image = self.denoise(image)
         if self.scale:
@@ -84,17 +84,17 @@ class ImageGenerator():
         if self.remove_borders_flag:
             image = self.word_extraction(image)
         return image
-    
+
     def denoise(self, img, d1 = 8, d2 = 8):
         if len(img.shape) > 2:
             denoiser = lambda x: cv2.fastNlMeansDenoisingColored(x, None, d1, d2)
         else:
             denoiser = lambda x: cv2.fastNlMeansDenoising(x, None, d1, d2)
         return denoiser(img)
-    
-    
-    def word_extraction(self, img, max_area_fraction = .4, 
-                        lower_canny_thresh = 200, 
+
+
+    def word_extraction(self, img, max_area_fraction = .4,
+                        lower_canny_thresh = 200,
                         upper_canny_thresh = 300,
                         dilation_kernel = np.ones((5,5))):
         new_img = copy(img)
@@ -111,8 +111,8 @@ class ImageGenerator():
                 good_contours.append(contour)
         cv2.drawContours(new_img, good_contours, -1, 0, cv2.FILLED)
         return self.crop_image(img, new_img)
-    
-    def crop_image(self, img, reference_image = None, upper_bound = 220, lower_bound = 80):
+
+    def crop_image(self, img, reference_image = None, upper_bound = 220, lower_bound = 40):
         if reference_image is None:
             reference_image = copy(img)
         if len(reference_image.shape) > 2:
@@ -132,7 +132,7 @@ class ImageGenerator():
         else:
             cropped_image = img[x0:x1, y0:y1, :]
         return cv2.resize(cropped_image, image_size)
-    
+
     def scale_and_crop(self, image, target_shape):
         fx = target_shape[1]/image.shape[1]
         fy = target_shape[0]/image.shape[0]
@@ -140,7 +140,7 @@ class ImageGenerator():
         image = cv2.resize(image, None, fx = scale, fy = scale)
         height_offset = max([int((image.shape[0] - target_shape[0])//2), 0])
         width_offset = max([int((image.shape[1] - target_shape[1])//2), 0])
-        image = image[height_offset: target_shape[0] + height_offset, 
+        image = image[height_offset: target_shape[0] + height_offset,
                       width_offset: target_shape[1] + width_offset, :]
         return image
 
@@ -193,22 +193,7 @@ def edge_extraction(img, d1 = 10, d2 = 10, t1 = 20, t2 = 60):
     kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3,3))
     image = cv2.morphologyEx(edges, cv2.MORPH_CLOSE, kernel)
     return edges
-    
-def lbp(img):
-    lbp_image = local_binary_pattern(image, 1, 2, method = 'uniform')
-    return lbp_image
 
-def show_images(image_set, compare_func = None):
-    window_name = 'images'
-    cv2.namedWindow(window_name)
-    if compare_func is None:
-        on_change = lambda x: cv2.imshow(window_name, image_set[x])
-    else:
-        on_change = lambda x: cv2.imshow(window_name, 
-                                         np.hstack([image_set[x], compare_func(copy(image_set[x]))]))
-    cv2.createTrackbar(window_name, window_name, 0, len(image_set) - 1, on_change)
-    on_change(0)
-    
 
 def _crop_dict(image_file_dict):
     images = []
