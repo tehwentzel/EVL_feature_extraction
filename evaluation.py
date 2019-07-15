@@ -11,11 +11,8 @@ from features import *
 import cv2
 import numpy as np
 
-
-from sklearn.linear_model import SGDClassifier, LogisticRegression
 from sklearn.model_selection import train_test_split
 from sklearn.ensemble import ExtraTreesClassifier
-from sklearn.feature_selection import RFE, RFECV
 
 
 def show_images(image_set, compare_func = None):
@@ -29,6 +26,16 @@ def show_images(image_set, compare_func = None):
                                         compare_func(copy(image_set[x]))]))
     cv2.createTrackbar(window_name, window_name, 0, len(image_set) - 1, on_change)
     on_change(0)
+
+def print_feature_importances(generator, importances):
+    feature_names = generator.get_feature_positions()
+    for name, idx in feature_names.items():
+        fs = importances[idx]
+        print(name)
+        print('mean', np.round(fs.mean(), 5))
+        print('max', np.round(fs.max(), 5))
+        print('sum', np.round(fs.sum(), 5),'\n')
+
 
 generator = FeatureGenerator(classes = Constants.test_classes, denoise = False, crop = True,
                              remove_borders= True)
@@ -50,7 +57,8 @@ y = np.vstack(all_labels)
 
 x_train, x_test, y_train, y_test = train_test_split(x, y, stratify = y)
 
-tree = ExtraTreesClassifier(n_estimators = 25).fit(x_train, y_train.ravel())
+tree = ExtraTreesClassifier(n_estimators = 100).fit(x_train, y_train.ravel())
+print_feature_importances(generator, tree.feature_importances_)
 print(tree.score(x_test, y_test.ravel()))
 plt.bar(np.arange(len(tree.feature_importances_)), tree.feature_importances_)
 show_images(all_images)

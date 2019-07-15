@@ -85,7 +85,7 @@ class ImageGenerator():
             image = self.word_extraction(image)
         return image
 
-    def denoise(self, img, d1 = 8, d2 = 8):
+    def denoise(self, img, d1 = 5, d2 = 5):
         if len(img.shape) > 2:
             denoiser = lambda x: cv2.fastNlMeansDenoisingColored(x, None, d1, d2)
         else:
