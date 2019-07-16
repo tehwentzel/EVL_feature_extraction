@@ -21,16 +21,25 @@ class FeatureGenerator(ImageGenerator):
                  crop = True, scale = Constants.image_size,
                  remove_borders = True, denoise = True):
         super().__init__(root, classes, crop, scale, remove_borders, denoise)
-        self.color_features = {'color_histograms': get_color_histogram,
-                               'sobel_histograms': sobel_hist}
-        self.gray_features = {'gabor sums': gabor_sums,
-                              'radon_histograms': radon_hists,
-                              'Chebyshev histograms': chebyshev2d,
-                              'Meijering sum': meijering_sum,
-                              'Tamura Texture': tamura_features}
-        self.fft_features = {'fft multiscale_histograms': multiscale_histogram,
-                             'fft radon_histogram': radon_hists,
-                             'fft chebyshev histogram': chebyshev2d}
+        self.color_features = {
+                'color_histograms': get_color_histogram,
+#                'sobel_histograms': sobel_hist
+                }
+        self.gray_features = {
+                'linear binary patterns': lbp,
+                'HOG': multiscale_hog,
+                'gray histogram': multiscale_histogram,
+                'gabor sums': gabor_sums,
+                'radon_histograms': radon_hists,
+                'Chebyshev histograms': chebyshev2d,
+                'Meijering sum': meijering_sum,
+#                'Tamura Texture': tamura_features
+                }
+        self.fft_features = {
+                'fft multiscale_histograms': multiscale_histogram,
+                'fft radon_histogram': radon_hists,
+                'fft chebyshev histogram': chebyshev2d
+                }
 
 
     def get_features(self, num_images, classes = None):
@@ -44,8 +53,8 @@ class FeatureGenerator(ImageGenerator):
 
     def get_feature_positions(self):
         p = 0
-        dummy_image = 10*np.empty((100, 100, 3)).astype('float32')
-        dummy_gray_image = 10*np.empty((100, 100)).astype('float32')
+        dummy_image = 10*np.random.random((100, 100, 3)).astype('float32')
+        dummy_gray_image = dummy_image.mean(axis = 0)
         feature_inds = {}
         def add_names(im, fdict):
             nonlocal p
@@ -66,17 +75,17 @@ class FeatureGenerator(ImageGenerator):
             for func in funcs.values():
                 featureset = func(i).ravel()
                 features.append(featureset)
-        add_features(image, self.color_features)
         gray_img = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-        add_features(gray_img, self.gray_features)
         fft_image = rfft(gray_img)
+        add_features(image, self.color_features)
+        add_features(gray_img, self.gray_features)
         add_features(fft_image, self.fft_features)
         return np.hstack(features).ravel()
 
-def get_color_histogram(image, bins = 10,
+def get_color_histogram(image, bins = 15,
                         additional_color_spaces = [
                              cv2.COLOR_BGR2YCrCb,
-                             cv2.COLOR_BGR2GRAY]):
+                             cv2.COLOR_BGR2HSV]):
     features = []
     features.append( get_colorspace_histogram(image, bins = bins) )
     for color_space in additional_color_spaces:
@@ -102,9 +111,10 @@ def get_colorspace_histogram(image, bins = 15):
 
 def tamura_features(image, kmax = 2, bins = 4):
     coarseness_matrix = texture.coarseness(image, kmax)
-    directionality = texture.directionality(image)
+    #directionality is nan in some cases
+#    directionality = texture.directionality(image)
     contrast = texture.contrast(image)
-    sums = np.array([coarseness_matrix.mean(), directionality, contrast])
+    sums = np.array([coarseness_matrix.mean(),  contrast])
     c_hist = np.histogram(coarseness_matrix.ravel(), bins = bins, range = (0,20))[0]
     return np.hstack([sums, c_hist])
 
@@ -114,9 +124,10 @@ def radon_hists(image, bins = 10):
           circle = False)
     return im2hist(radon_image, bins)
 
-def lbp(img, bins = 5):
-    lbp_image = local_binary_pattern(img, 4, 2, method = 'uniform')
-    return im2hist(lbp_image, bins)
+def lbp(img, n_bits = 4, radius = 2, n_scales = 2, max_bins = 15):
+    lbp_fun = lambda i: local_binary_pattern(i, n_bits, radius, method = 'ror')
+    bins = [min([max_bins, 2**n_bits - 1]) for dummy in range(n_scales)]
+    return multiscale_histogram(img, transform = lbp_fun, bins = bins, range_ = (0, 2**n_bits))
 
 def im2hist(img, bins, range_ = (0,255)):
     return np.histogram(img, bins = bins, density = True, range = range_)[0].astype('float32')
@@ -148,12 +159,38 @@ def meijering_sum(img, n_scales = 2):
     return output
 
 
-def sobel_hist(img, bins = 15):
+def sobel_hist(img, bins = 20):
     sobel = lambda x,y: (lambda i: cv2.Sobel(i, cv2.CV_32F, x, y))
-    gx = multiscale_histogram(img, transform = sobel(1, 0), range_ = (-500,500) )
-    gy = multiscale_histogram(img, transform = sobel(0, 1), range_ = (-500, 500) )
+    gx = multiscale_histogram(img, transform = sobel(1, 0), range_ = (-900,900) )
+    gy = multiscale_histogram(img, transform = sobel(0, 1), range_ = (-900, 900) )
     hist = np.hstack([gx, gy])
     return hist
+
+def multiscale_hog(img, n_scales = 3, n_bins = 50):
+    bincounts = [int(n_bins/(i+1)) for i in range(n_scales)]
+    hist = []
+    for bincount in bincounts:
+        if bincount != bincounts[0]:
+            img = cv2.pyrDown(img)
+        scale_hist = get_hog(img, bincount)
+        hist.append(scale_hist)
+    return np.hstack(hist)
+
+def get_hog(img, n_bins = 50):
+    if len(img.shape) > 2:
+        img = cv2.cvtColor(copy(img), cv2.COLOR_BGR2GRAY)
+    gx = cv2.Sobel(img, cv2.CV_32F, 1, 0)
+    gy = cv2.Sobel(img, cv2.CV_32F, 0, 1)
+    magnitude, angle = cv2.cartToPolar(gx,gy)
+    magnitude = magnitude.ravel()
+    angle = np.nan_to_num(angle % np.pi).ravel()
+    histogram = np.zeros((n_bins,))
+    bin_width = np.pi/n_bins
+    for idx in range(len(magnitude)):
+        histogram[ int(angle[idx]//bin_width) ] += magnitude[idx]
+    if np.linalg.norm(histogram) <= 0:
+        return np.zeros(histogram.shape)
+    return histogram/np.linalg.norm(histogram)
 
 def binary_integral(gray_image):
     assert(len(gray_image.shape) == 2)

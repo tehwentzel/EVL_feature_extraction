@@ -4,31 +4,25 @@ Created on Mon Jul 15 16:32:18 2019
 
 @author: https://www.pyimagesearch.com/2018/08/20/opencv-text-detection-east-text-detector/
 """
-from imutils.object_detection import non_max_suppression
-import numpy as np
-import argparse
-import time
+import pytesseract
 import cv2
+pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract'
 
-# construct the argument parser and parse the arguments
-ap = argparse.ArgumentParser()
-ap.add_argument("-i", "--image", type=str,
-	help="path to input image")
-ap.add_argument("-east", "--east", type=str,
-	help="path to input EAST text detector")
-ap.add_argument("-c", "--min-confidence", type=float, default=0.5,
-	help="minimum probability required to inspect a region")
-ap.add_argument("-w", "--width", type=int, default=320,
-	help="resized image width (should be multiple of 32)")
-ap.add_argument("-e", "--height", type=int, default=320,
-	help="resized image height (should be multiple of 32)")
-args = vars(ap.parse_args())
-
-width = 192
-height = 192
-
-layerNames = [
-	"feature_fusion/Conv_7/Sigmoid",
-	"feature_fusion/concat_3"]
-
-net = cv2.dnn.readNet(
+def fill_characters(img):
+    img = cv2.fastNlMeansDenoisingColored(img, None, 10, 10)
+    characters = pytesseract.image_to_boxes(img,
+                                            output_type = pytesseract.Output.DICT)
+    n_characters = len(characters['page'])
+    possible_characters = set(['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k'])
+    bbox_keys = ['left', 'bottom', 'right', 'top']
+    boxes = []
+    for char_num in range(n_characters):
+        char = characters['char'][char_num]
+        if char.lower() not in possible_characters:
+            continue
+        edges = [characters[key][char_num] for key in bbox_keys]
+        bbox = [(edges[0], img.shape[0] - edges[3]), (edges[2], img.shape[0] - edges[1])]
+        boxes.append(bbox)
+    for bbox in boxes:
+        img = cv2.rectangle(img, bbox[1], bbox[0], (0,0,0), 3)
+    return(img)

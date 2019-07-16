@@ -4,28 +4,30 @@ Created on Fri Jun 14 12:09:10 2019
 
 @author: Andrew
 """
-import numpy as np 
+import numpy as np
 
 class Constants():
-    
+
     classes = ['Electron-Mix',
                'Transmission',
-               'ReporterANDImmunoHistochem', 
+               'ReporterANDImmunoHistochem',
                'Fluorescence-Mix',
-               'Light-Mix', 
+               'Light-Mix',
                'InSituHybridization'
                ]
-    
+
     test_classes = [
             "Electron",
             "Fluorescence",
-            "Light"
+            "Light",
+            "Graphs",
+            "PCR"
             ]
-    
+
     image_root = 'data\images_2\\'
     test_image_root = 'data\test\\'
-    
-    
+
+
     top_edge_kernel = np.array([
                 [1,1,1],
                 [0,0,0],

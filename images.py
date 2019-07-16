@@ -13,21 +13,27 @@ class ImageGenerator():
 
     def __init__(self, root = 'data\images_2\**\*.jpg', classes = None,
                  crop = True, scale = Constants.image_size,
-                 remove_borders = True, denoise = True):
+                 remove_borders = True, denoise = True, shuffle = True):
         self.file_dict = self.get_image_files(root, classes)
+        if shuffle:
+            self.shuffle_files()
         class_count = [len(x) for x in self.file_dict.values()]
         self.class_ratios = np.array([x/np.sum(class_count) for x in class_count])
         self.inverse_class_positions = [x - 1 for x in class_count]
-
         self.crop_flag = crop
         self.scale = scale
         self.remove_borders_flag = remove_borders
         self.denoise_flag = denoise
         self.num_images = np.sum(class_count)
 
+    def shuffle_files(self):
+        for key, file_list in self.file_dict.items():
+            np.random.shuffle(file_list)
+
     def get_image_files(self, root, classes = None):
         if classes is None:
             classes = Constants.classes
+        self.class_names = classes
         files = glob.glob(root, recursive = True)
         files = list(set(files))
         images = OrderedDict()
@@ -75,14 +81,18 @@ class ImageGenerator():
     def process_image_file(self, image_file):
         image = cv2.imread(image_file)
         if self.crop_flag:
-            image = crop(image)
-        if self.denoise_flag:
-            image = self.denoise(image)
+            cropped_image = crop(image)
+            imsize = lambda i: i.shape[0]*i.shape[1]
+            #skip if cropped image is super small
+            if 4*imsize(cropped_image) > imsize(image):
+                image = cropped_image
         if self.scale:
-            image = cv2.resize(image, self.scale)
-#            image = self.scale_and_crop(image, self.scale)
+#            image = cv2.resize(image, self.scale)
+            image = self.scale_and_crop(image, self.scale)
         if self.remove_borders_flag:
             image = self.word_extraction(image)
+        if self.denoise_flag:
+            image = self.denoise(image)
         return image
 
     def denoise(self, img, d1 = 5, d2 = 5):
@@ -136,12 +146,12 @@ class ImageGenerator():
     def scale_and_crop(self, image, target_shape):
         fx = target_shape[1]/image.shape[1]
         fy = target_shape[0]/image.shape[0]
-        scale = max([fx, fy])
+        scale = min([fx, fy])
         image = cv2.resize(image, None, fx = scale, fy = scale)
-        height_offset = max([int((image.shape[0] - target_shape[0])//2), 0])
-        width_offset = max([int((image.shape[1] - target_shape[1])//2), 0])
-        image = image[height_offset: target_shape[0] + height_offset,
-                      width_offset: target_shape[1] + width_offset, :]
+#        height_offset = max([int((image.shape[0] - target_shape[0])//2), 0])
+#        width_offset = max([int((image.shape[1] - target_shape[1])//2), 0])
+#        image = image[height_offset: target_shape[0] + height_offset,
+#                      width_offset: target_shape[1] + width_offset, :]
         return image
 
 

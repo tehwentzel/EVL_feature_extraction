@@ -10,8 +10,10 @@ from constants import Constants
 from features import *
 import cv2
 import numpy as np
-
-from sklearn.model_selection import train_test_split
+from copy import copy
+import matplotlib.pyplot as plt
+from sklearn.model_selection import train_test_split, cross_validate
+from sklearn.metrics import accuracy_score, balanced_accuracy_score, f1_score
 from sklearn.ensemble import ExtraTreesClassifier
 
 
@@ -32,13 +34,40 @@ def print_feature_importances(generator, importances):
     for name, idx in feature_names.items():
         fs = importances[idx]
         print(name)
-        print('mean', np.round(fs.mean(), 5))
-        print('max', np.round(fs.max(), 5))
-        print('sum', np.round(fs.sum(), 5),'\n')
+        print('mean', np.round(fs.mean(), 4))
+        print('max', np.round(fs.max(), 4))
+        print('sum', np.round(fs.sum(), 4),'\n')
+
+def classwise_importances(x, y, generator):
+    model = ExtraTreesClassifier(n_estimators = 100)
+    feature_names = generator.get_feature_positions()
+    for c in range(len(generator.class_names)):
+        name = generator.class_names[c]
+        binary_y = (y == c).astype('int32')
+        xtrain, xtest, ytrain, ytest = train_test_split(x, binary_y, stratify = binary_y)
+        model.fit(xtrain, ytrain.ravel())
+        print(name, model.score(xtest, ytest.ravel()))
+        for fname, idx in feature_names.items():
+            print(fname, np.round(model.feature_importances_[idx].sum(), 4))
+        print()
+
+def evaluate(x, y, model, generator, importances = False):
+    model.fit(x, y.ravel())
+    if importances:
+        print_feature_importances(generator, model.feature_importances_)
+        plt.bar(np.arange(len(model.feature_importances_)), model.feature_importances_)
+    metrics = ['accuracy', 'f1_weighted', 'precision_weighted', 'recall_weighted']
+    score = cross_validate(model, x, y.ravel(), cv = 5, scoring=metrics)
+    for metric in metrics:
+        key = 'test_' + metric
+        print(metric, score[key].mean())
+    print()
+    return score
 
 
 generator = FeatureGenerator(classes = Constants.test_classes, denoise = False, crop = True,
                              remove_borders= True)
+
 all_features = []
 all_labels = []
 all_images = []
@@ -54,11 +83,7 @@ for _ in range(int(total/batch_size)):
 x = np.vstack(all_features)
 y = np.vstack(all_labels)
 
-
-x_train, x_test, y_train, y_test = train_test_split(x, y, stratify = y)
-
-tree = ExtraTreesClassifier(n_estimators = 100).fit(x_train, y_train.ravel())
-print_feature_importances(generator, tree.feature_importances_)
-print(tree.score(x_test, y_test.ravel()))
-plt.bar(np.arange(len(tree.feature_importances_)), tree.feature_importances_)
+tree = ExtraTreesClassifier(n_estimators = 100)
+evaluate(x,y,tree,generator, True)
+classwise_importances(x, y, generator)
 show_images(all_images)
