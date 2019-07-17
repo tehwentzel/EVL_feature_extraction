@@ -11,7 +11,6 @@ from skimage.feature import local_binary_pattern
 from skimage.filters import gabor, meijering
 from constants import Constants
 from images import *
-from scipy.fftpack import rfft
 from skimage.transform import radon
 import texture
 
@@ -33,6 +32,7 @@ class FeatureGenerator(ImageGenerator):
                 'radon_histograms': radon_hists,
                 'Chebyshev histograms': chebyshev2d,
                 'Meijering sum': meijering_sum,
+                'Hu Moments': lambda x: cv2.HuMoments(cv2.moments(x)).ravel(),
 #                'Tamura Texture': tamura_features
                 }
         self.fft_features = {
@@ -76,7 +76,7 @@ class FeatureGenerator(ImageGenerator):
                 featureset = func(i).ravel()
                 features.append(featureset)
         gray_img = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-        fft_image = rfft(gray_img)
+        fft_image = fft_magnitude(gray_img)
         add_features(image, self.color_features)
         add_features(gray_img, self.gray_features)
         add_features(fft_image, self.fft_features)
@@ -157,6 +157,14 @@ def meijering_sum(img, n_scales = 2):
         output[position] = mintegrate(img, True)
         output[position + 1] = mintegrate(img, False)
     return output
+
+def fft_magnitude(img, scale = False):
+    fft_img = np.fft.fft2(img)
+    fft_img = np.conj(fft_img)*fft_img
+    fft_img = np.real(fft_img)
+    if scale:
+        fft_img = img.max()*(fft_img - fft_img.min())/(fft_img.max() - fft_img.min())
+    return fft_img
 
 
 def sobel_hist(img, bins = 20):

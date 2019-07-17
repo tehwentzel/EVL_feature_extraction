@@ -68,7 +68,7 @@ class ImageGenerator():
                 classes = base_classes
             image_file = self.file_dict[label][file_position]
             images.append( self.process_image_file(image_file) )
-            labels.append(label)
+            labels.append(image_file)
         return images, labels
 
     def reset_classes(self, count = 0):

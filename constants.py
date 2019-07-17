@@ -20,9 +20,19 @@ class Constants():
             "Electron",
             "Fluorescence",
             "Light",
-            "Graphs",
-            "PCR"
+            "Graphics",
+            "Gel",
+            'MRI',
+            'Xray'
             ]
+
+    class_hierarchy = {
+            'Experimental': ['Microscopy', 'Plate', 'Gel'],
+            'Microscopy': ['Electron', 'Light', 'Fluorescence'],
+            'Organs': ['MRI', 'Xray'],
+            'Graphics': ['BarChart', 'Diagram', 'LineChart', 'ScatterPlot', 'Table', 'Other'],
+            'MacromoleculeSequence': ['DNA', 'Protein']
+            }
 
     image_root = 'data\images_2\\'
     test_image_root = 'data\test\\'
