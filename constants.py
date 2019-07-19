@@ -16,16 +16,6 @@ class Constants():
                'InSituHybridization'
                ]
 
-    test_classes = [
-            "Electron",
-            "Fluorescence",
-            "Light",
-            "Graphics",
-            "Gel",
-            'MRI',
-            'Xray'
-            ]
-
     class_hierarchy = {
             'Experimental': ['Microscopy', 'Plate', 'Gel'],
             'Microscopy': ['Electron', 'Light', 'Fluorescence'],
@@ -33,6 +23,10 @@ class Constants():
             'Graphics': ['BarChart', 'Diagram', 'LineChart', 'ScatterPlot', 'Table', 'Other'],
             'MacromoleculeSequence': ['DNA', 'Protein']
             }
+
+    test_classes = []
+    for item in class_hierarchy.values():
+        test_classes.extend(item)
 
     image_root = 'data\images_2\\'
     test_image_root = 'data\test\\'

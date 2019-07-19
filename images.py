@@ -11,9 +11,10 @@ from crop import grabcut_crop, crop
 
 class ImageGenerator():
 
-    def __init__(self, root = 'data\images_2\**\*.jpg', classes = None,
+    def __init__(self, root = 'data\images\**\*.jpg', class_roots = None,
                  crop = True, scale = Constants.image_size,
                  remove_borders = True, denoise = True, shuffle = True):
+        classes = self.get_classes(class_roots)
         self.file_dict = self.get_image_files(root, classes)
         if shuffle:
             self.shuffle_files()
@@ -25,6 +26,17 @@ class ImageGenerator():
         self.remove_borders_flag = remove_borders
         self.denoise_flag = denoise
         self.num_images = np.sum(class_count)
+
+    def get_classes(self, class_root):
+        if class_root is None:
+            return list(Constants.test_classes)
+        if isinstance(class_root, str):
+            return Constants.class_hierarchy[class_root]
+        classes = []
+        for c in class_root:
+            if c in Constants.class_hierarchy:
+                classes.extend(Constants.class_hierarchy[c])
+        return classes
 
     def shuffle_files(self):
         for key, file_list in self.file_dict.items():

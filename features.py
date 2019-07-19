@@ -9,6 +9,7 @@ import numpy as np
 from copy import copy
 from skimage.feature import local_binary_pattern
 from skimage.filters import gabor, meijering
+from scipy.fftpack import rfft
 from constants import Constants
 from images import *
 from skimage.transform import radon
@@ -16,10 +17,10 @@ import texture
 
 class FeatureGenerator(ImageGenerator):
 
-    def __init__(self, root = 'data\images_2\**\*.jpg', classes = None,
+    def __init__(self, root = 'data\images\**\*.jpg', class_roots = None,
                  crop = True, scale = Constants.image_size,
                  remove_borders = True, denoise = True):
-        super().__init__(root, classes, crop, scale, remove_borders, denoise)
+        super().__init__(root, class_roots, crop, scale, remove_borders, denoise)
         self.color_features = {
                 'color_histograms': get_color_histogram,
 #                'sobel_histograms': sobel_hist
@@ -33,10 +34,11 @@ class FeatureGenerator(ImageGenerator):
                 'Chebyshev histograms': chebyshev2d,
                 'Meijering sum': meijering_sum,
                 'Hu Moments': lambda x: cv2.HuMoments(cv2.moments(x)).ravel(),
+                'fft of Edges': fft_edges,
 #                'Tamura Texture': tamura_features
                 }
         self.fft_features = {
-                'fft multiscale_histograms': multiscale_histogram,
+                'fft multiscale_histograms':lambda x: multiscale_histogram(x, range_ = (0, 800)),
                 'fft radon_histogram': radon_hists,
                 'fft chebyshev histogram': chebyshev2d
                 }
@@ -76,7 +78,7 @@ class FeatureGenerator(ImageGenerator):
                 featureset = func(i).ravel()
                 features.append(featureset)
         gray_img = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-        fft_image = fft_magnitude(gray_img)
+        fft_image = rfft(gray_img)
         add_features(image, self.color_features)
         add_features(gray_img, self.gray_features)
         add_features(fft_image, self.fft_features)
@@ -124,9 +126,14 @@ def radon_hists(image, bins = 10):
           circle = False)
     return im2hist(radon_image, bins)
 
-def lbp(img, n_bits = 4, radius = 2, n_scales = 2, max_bins = 15):
+def fft_edges(image, bins = 10):
+    transform = lambda i: rfft(cv2.Canny(i.astype('uint8'),100,200))
+    return multiscale_histogram(image, transform = transform, range_ = (0,800))
+
+def lbp(img, n_bits = 6, radius = 2, n_scales = 2, max_bins = 15):
+    img = cv2.GaussianBlur(img, (5,5),0)
     lbp_fun = lambda i: local_binary_pattern(i, n_bits, radius, method = 'ror')
-    bins = [min([max_bins, 2**n_bits - 1]) for dummy in range(n_scales)]
+    bins = [2**n_bits - 1 for dummy in range(n_scales)]
     return multiscale_histogram(img, transform = lbp_fun, bins = bins, range_ = (0, 2**n_bits))
 
 def im2hist(img, bins, range_ = (0,255)):
@@ -164,7 +171,7 @@ def fft_magnitude(img, scale = False):
     fft_img = np.real(fft_img)
     if scale:
         fft_img = img.max()*(fft_img - fft_img.min())/(fft_img.max() - fft_img.min())
-    return fft_img
+    return np.sqrt(fft_img)
 
 
 def sobel_hist(img, bins = 20):

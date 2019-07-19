@@ -13,7 +13,7 @@ import numpy as np
 from copy import copy
 import matplotlib.pyplot as plt
 import pickle
-from sklearn.model_selection import train_test_split, cross_validate
+from sklearn.model_selection import train_test_split, cross_validate, StratifiedKFold
 from sklearn.metrics import accuracy_score, balanced_accuracy_score, f1_score
 from sklearn.ensemble import ExtraTreesClassifier
 
@@ -59,31 +59,26 @@ def print_feature_importances(generator, importances, plot = True):
         plt.barh(x,sums, tick_label = labels)
         plt.show()
 
-def classwise_importances(x, y, generator):
+def classwise_importances(x, y, generator, parent = None):
     model = ExtraTreesClassifier(n_estimators = 100)
     feature_names = generator.get_feature_positions()
-    for c in range(len(generator.class_names)):
-        name = generator.class_names[c]
-        binary_y = (y == c).astype('int32')
+    if parent is None:
+        for parent, child_classes in Constants.class_hierarchy.items():
+            for item in set(y):
+                if item in child_classes:
+                    class_names = child_classes
+                    break
+    for c in range(len(class_names)):
+        name = class_names[c]
+        if name not in set(y):
+            continue
+        binary_y = (y == name).astype('int32')
         xtrain, xtest, ytrain, ytest = train_test_split(x, binary_y, stratify = binary_y)
         model.fit(xtrain, ytrain.ravel())
-        print(name, model.score(xtest, ytest.ravel()))
+        print(name)#, model.score(xtest, ytest.ravel()))
         for fname, idx in feature_names.items():
             print(fname, np.round(model.feature_importances_[idx].sum(), 4))
         print()
-
-def evaluate(x, y, model, generator, importances = False):
-    model.fit(x, y.ravel())
-    if importances:
-        print_feature_importances(generator, model.feature_importances_)
-        plt.bar(np.arange(len(model.feature_importances_)), model.feature_importances_)
-    metrics = ['accuracy', 'f1_weighted', 'precision_weighted', 'recall_weighted']
-    score = cross_validate(model, x, y.ravel(), cv = 5, scoring=metrics)
-    for metric in metrics:
-        key = 'test_' + metric
-        print(metric, score[key].mean())
-    print()
-    return score
 
 def get_loaded_images(file_path = 'data\cleaned_images.pickle'):
     with open(file_path, 'rb') as f:
@@ -105,46 +100,84 @@ def get_featureset(generator, total = None, batch_size = 20):
     return np.vstack(all_features), all_labels, all_images
 
 
-#files = []
-#for fs in generator.file_dict.values():
-#    files.extend(fs)
-#
-#parent = 'Microscopy'
-#parent_re = re.compile(parent)
-#children_classes = Constants.class_hierarchy[parent]
-#class_res = [re.compile[c] for c in children_classes]
-#labels = []
-#for file in files:
-#    if parent_re.search(file) is not None:
-#        for c_idx in range(len(children_classes)):
-#            if class_res[c_idx].search(file) is not None:
-#                labels.append(c_idx)
-#
-def get_classes(x, files, parent):
-    parent_pattern = re.compile(parent)
-    classes = Constants.class_heirarchy[parent]
+def get_class_args(files, parent = None):
+    if parent is None:
+        classes = list( Constants.class_hierarchy.keys() )
+        parent_pattern = re.compile('')
+    else:
+        classes = Constants.class_hierarchy[parent]
+        parent_pattern = re.compile(parent)
     class_patterns = [re.compile(c) for c in classes]
-    y = -np.ones((len(files),))
+    y = []
+    good_files = []
     for idx in range(len(files)):
         file = files[idx]
         if parent_pattern.search(file) is None:
             continue
         for c in range(len(classes)):
             if class_patterns[c].search(file) is not None:
-                y[idx] = c
+                y.append(classes[c])
+                good_files.append(idx)
                 break
-    good_files = np.argwhere(y > -1).ravel()
-    return x[good_files], y[good_files]
+    return np.array(good_files), np.array(y)
+
+def crossvalidate(x,y,model):
+    kfold = StratifiedKFold(n_splits = 5)
+    y_pred = np.empty(y.shape).astype('str')
+    importances = []
+    for train_index, test_index in kfold.split(x,y):
+       model.fit(x[train_index], y[train_index])
+       y_pred[test_index] = model.predict(x[test_index])
+       importances.append(model.feature_importances_)
+    return y_pred, np.mean(importances, axis = 0)
 
 
+def save_result(ytrue, ypred, x_importances, feature_names):
+    scores = {}
+    scores['accuracy'] = accuracy_score(ytrue, ypred)
+    scores['f1_weighted'] = f1_score(ytrue, ypred, average = 'weighted')
+    importances = {}
+    for name, pos in feature_names.items():
+        importances[name] = x_importances[pos].sum()
+    scores['importances'] = importances
+    return scores
 
-generator = FeatureGenerator(classes = Constants.test_classes, denoise = False, crop = True,
-                             remove_borders= True)
+def get_cascade_classifier_results(features, files, generator, top_level = None, model = None):
+    feature_names = generator.get_feature_positions()
+    all_args, y_true = get_class_args(files, parent = top_level)
+    if len(all_args) == 0:
+        return None
+    good_files = list(np.array(files)[all_args])
+    good_features = features[all_args]
+
+    if model is None:
+        model = ExtraTreesClassifier(n_estimators = 100)
+    y_pred, importances = crossvalidate(good_features, y_true, model)
+    staged_results = {str(set(y_true)): save_result(y_true, y_pred, importances, feature_names)}
+    while True:
+        yset = set(y_true)
+        parents = [label for label in yset if (label in Constants.class_hierarchy.keys())]
+        if len(parents) == 0:
+            break
+        args, y = get_class_args(good_files, parents[0])
+        y_true[args] = y
+
+        to_classify = np.argwhere(y_pred == parents[0]).ravel()
+        if len(to_classify) == 0:
+            continue
+        y_pred, importances = crossvalidate(good_features, y_true, model)
+        staged_results[str(set(y_true))] = save_result(y_true, y_pred, importances, feature_names)
+    return staged_results
 
 
-features, files, images = get_featureset(generator, total = 120)
-#
-#tree = ExtraTreesClassifier(n_estimators = 100)
-#evaluate(x,y,tree,generator, True)
-#classwise_importances(x, y, generator)
-#show_images(all_images)
+generator = FeatureGenerator(denoise = False, crop = True,
+                             remove_borders= True, class_roots = 'Experimental')
+features, files, images = get_featureset(generator, total = 800)
+from sklearn.ensemble import GradientBoostingClassifier, RandomForestClassifier, AdaBoostClassifier
+gbc = ExtraTreesClassifier(n_estimators = 200)
+accuracys = {'Top': get_cascade_classifier_results(features, files, generator, None, gbc)}
+for level in Constants.class_hierarchy.keys():
+    results = get_cascade_classifier_results(features, files, generator, level, gbc)
+    if results is not None:
+        accuracys[level] = results
+print(accuracys['Experimental'])
