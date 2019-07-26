@@ -47,3 +47,7 @@ class Constants():
     all_edges = [top_edge_kernel, bottom_edge_kernel, left_edge_kernel, right_edge_kernel]
     image_size = (400,400)
     image_area = 1600
+
+    bgr2lcc_operator = np.array([[.114, .587, .299],
+                                   [-1, .5, .5],
+                                   [0, -.866, 866]])

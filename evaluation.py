@@ -80,10 +80,17 @@ def classwise_importances(x, y, generator, parent = None):
             print(fname, np.round(model.feature_importances_[idx].sum(), 4))
         print()
 
-def get_loaded_images(file_path = 'data\cleaned_images.pickle'):
+def load_pickle(file_path = 'cleaned_images'):
+    file_path = 'data\\' + file_path + '.pickle'
     with open(file_path, 'rb') as f:
         images = pickle.load(f)
     return images
+
+def save_to_pickle(obj, file_path):
+    file_path = 'data\\' + file_path + '.pickle'
+    with open(file_path, 'wb') as f:
+         pickle.dump(obj, f)
+         print('file saved to', file_path)
 
 def get_featureset(generator, total = None, batch_size = 20):
     all_features = []
@@ -169,15 +176,48 @@ def get_cascade_classifier_results(features, files, generator, top_level = None,
         staged_results[str(set(y_true))] = save_result(y_true, y_pred, importances, feature_names)
     return staged_results
 
+images = load_pickle('processes_images_all')
 
-generator = FeatureGenerator(denoise = False, crop = True,
-                             remove_borders= True, class_roots = 'Experimental')
-features, files, images = get_featureset(generator, total = 800)
-from sklearn.ensemble import GradientBoostingClassifier, RandomForestClassifier, AdaBoostClassifier
-gbc = ExtraTreesClassifier(n_estimators = 200)
-accuracys = {'Top': get_cascade_classifier_results(features, files, generator, None, gbc)}
-for level in Constants.class_hierarchy.keys():
-    results = get_cascade_classifier_results(features, files, generator, level, gbc)
-    if results is not None:
-        accuracys[level] = results
-print(accuracys['Experimental'])
+def get_sift(img):
+    sift = cv2.xfeatures2d.SIFT_create()
+    step_size = 5
+    kp = [cv2.KeyPoint(x, y, step_size) for y in range(0, gray.shape[0], step_size) for x in range(0, gray.shape[1], step_size)]
+    return sift.compute(gray, kp)[1]
+
+
+def sift_bow(images):
+    sift = cv2.xfeatures2d.SIFT_create()
+    step_size = 5
+    ims = []
+    feats = []
+    for gray in images:
+        kp = [cv2.KeyPoint(x, y, step_size) for y in range(0, gray.shape[0], step_size) for x in range(0, gray.shape[1], step_size)]
+        im = cv2.drawKeypoints(gray, kp, None)
+        sift_features = sift.compute(gray, kp)
+        ims.append(im)
+        feats.append(sift_features.ravel())
+    return np.vstack(feats)
+
+image = images[0]
+
+def bgr_to_orgb(image):
+    operator = np.zeros((image.shape[0], image.shape[1], 3, 3))
+    operator[:,:] = Constants.bgr2lcc_operator
+
+
+#generator = FeatureGenerator(denoise = True, crop = True,
+#                             remove_borders= True, class_roots = None)
+#features, files, images = get_featureset(generator, total = generator.num_images)
+#from sklearn.ensemble import GradientBoostingClassifier, RandomForestClassifier, AdaBoostClassifier
+#gbc = ExtraTreesClassifier(n_estimators = 200)
+#accuracys = {'Top': get_cascade_classifier_results(features, files, generator, None, gbc)}
+#for level in Constants.class_hierarchy.keys():
+#    results = get_cascade_classifier_results(features, files, generator, level, gbc)
+#    if results is not None:
+#        accuracys[level] = results
+#print(accuracys['Microscopy'])
+
+
+#save_to_pickle(features, 'image_features_all')
+#save_to_pickle(files, 'image_files_all')
+#save_to_pickle(images, 'processes_images_all')
