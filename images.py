@@ -62,6 +62,18 @@ class ImageGenerator():
             files = new_files
         return images
 
+    def files_to_labels(self, files):
+        file_lookup = {}
+        for key, file in self.file_dict.items():
+            file_lookup[file] = key
+        classes = np.empty((len(files))).astype('str')
+        i = 0
+        for file in files:
+            classes[i] = file_lookup[file]
+            i += 1
+        return classes
+
+
     def get_images(self, num_images = 10, base_classes = None):
         if base_classes is None:
             base_classes = list(self.file_dict.keys())
@@ -125,7 +137,7 @@ class ImageGenerator():
     #    new_img = cv2.bilateralFilter(new_img, 20,20, 20)
         edges = cv2.Canny(copy(new_img), lower_canny_thresh, upper_canny_thresh)
         edges = cv2.dilate(edges, dilation_kernel)
-        contours, heirarchy = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        _, contours, heirarchy = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         good_contours = []
         max_area = max_area_fraction*img.shape[0]*img.shape[1]
         for contour in contours:

@@ -11,18 +11,28 @@ from skimage.feature import local_binary_pattern
 from skimage.filters import gabor, meijering
 from scipy.fftpack import rfft
 from constants import Constants
+import pickle
 from images import *
 from skimage.transform import radon
 import texture
+from bag_of_words import *
 
 class FeatureGenerator(ImageGenerator):
 
     def __init__(self, root = 'data\images\**\*.jpg', class_roots = None,
                  crop = True, scale = Constants.image_size,
-                 remove_borders = True, denoise = True):
+                 remove_borders = True, denoise = True, bovw_codebook = None):
         super().__init__(root, class_roots, crop, scale, remove_borders, denoise)
+        if bovw_codebook is not None:
+            file_path = 'data\\' + bovw_codebook + '.pickle'
+            with open(file_path, 'rb') as f:
+                self.codebook = pickle.load(f)
+        else:
+            self.codebook = None
         self.color_features = {
                 'color_histograms': get_color_histogram,
+                'oRBG_histograms': orgb_histogram,
+                'SIFT BOW': lambda x: sift_words(x, self.codebook),
 #                'sobel_histograms': sobel_hist
                 }
         self.gray_features = {
@@ -39,18 +49,21 @@ class FeatureGenerator(ImageGenerator):
                 }
         self.fft_features = {
                 'fft multiscale_histograms':lambda x: multiscale_histogram(x, range_ = (0, 800)),
-                'fft radon_histogram': radon_hists,
-                'fft chebyshev histogram': chebyshev2d
+#                'fft radon_histogram': radon_hists,
+#                'fft chebyshev histogram': chebyshev2d
                 }
 
-
-    def get_features(self, num_images, classes = None):
-        images, labels = self.get_images(num_images, classes)
+    def extract_features(self, images):
         x = []
         for image in images:
             img_features = self.image_features(image)
             x.append(img_features)
         x = np.vstack(x)
+        return x
+
+    def get_features(self, num_images, classes = None):
+        images, labels = self.get_images(num_images, classes)
+        x = self.extract_features(images)
         return x, labels, images
 
     def get_feature_positions(self):
@@ -62,9 +75,10 @@ class FeatureGenerator(ImageGenerator):
             nonlocal p
             for name, f in fdict.items():
                 feature = f(im)
-                frange = np.arange(p, p + len(feature))
-                p = p + len(feature)
-                feature_inds[name] = frange
+                if len(feature) > 0:
+                    frange = np.arange(p, p + len(feature))
+                    p = p + len(feature)
+                    feature_inds[name] = frange
         add_names(dummy_image, self.color_features)
         add_names(dummy_gray_image, self.gray_features)
         add_names(dummy_gray_image, self.fft_features)
@@ -75,8 +89,9 @@ class FeatureGenerator(ImageGenerator):
         features = []
         def add_features(i, funcs):
             for func in funcs.values():
-                featureset = func(i).ravel()
-                features.append(featureset)
+                featureset = func(i)
+                if featureset is not None:
+                    features.append(featureset.ravel())
         gray_img = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
         fft_image = rfft(gray_img)
         add_features(image, self.color_features)
@@ -96,7 +111,7 @@ def get_color_histogram(image, bins = 15,
     features = np.hstack(features)
     return features
 
-def get_colorspace_histogram(image, bins = 15):
+def get_colorspace_histogram(image, bins = 15, range_ = (0,255)):
     if len(image.shape) > 2: #check if grayscale
         n_channels = image.shape[2]
     else:
@@ -107,7 +122,7 @@ def get_colorspace_histogram(image, bins = 15):
             img_slice = image[:,:,channel]
         else:
             img_slice = image
-        color_histogram = multiscale_histogram(img_slice)
+        color_histogram = multiscale_histogram(img_slice, range_ = range_)
         hists.append(color_histogram.astype('float32'))
     return np.hstack(hists)
 
@@ -243,5 +258,39 @@ def chebyshev2d(image, degree = 20, bins = 10):
         hist = np.arange(0, bins)
     return hist
 
+def rot_x(theta, target):
+    #applies a rotation matrix around the x axis
+    #used for the roation in the oRGb color transform
+    rotation = np.array([
+            [1, 0, 0],
+            [0, np.cos(theta), -np.sin(theta)],
+            [0, np.sin(theta), np.cos(theta)]
+        ])
+
+    return np.matmul(rotation, target)
+
+def bgr_to_orgb(image):
+    operator = Constants.bgr2lcc_operator
+    image = image.astype('float32')/255.0
+    def convert_pixel(pixel):
+        pixel = np.matmul(operator, pixel)
+        theta = np.arctan2(pixel[1], pixel[2])
+        if theta < np.pi/3:
+            theta = theta/2
+        else:
+            theta = np.pi/4 - theta/4
+        return rot_x(theta, pixel)
+    orgb_image = np.apply_along_axis(convert_pixel, 2, image)
+    return np.clip(orgb_image, 0, 1)
+
+def orgb_histogram(image):
+    orgb_image = bgr_to_orgb(image)
+    return get_colorspace_histogram(orgb_image, range_ = (0,1))
+
+def sift_words(image, codebook, dense = True):
+    sift = cv2.xfeatures2d.SIFT_create()
+    desc = root_descriptor(image, sift, dense)
+    word_vector = extract_visual_words([desc], codebook)
+    return word_vector/word_vector.sum()
 
 get_classes = lambda file_dict: np.hstack([k*np.ones((len(v), )) for k,v in file_dict.items()]).astype('int32')

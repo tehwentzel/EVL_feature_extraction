@@ -60,8 +60,7 @@ def get_contours(image):
     squares = []
     height = image.shape[0]
     width = image.shape[1]
-
-    contours, _ = cv2.findContours(image, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+    _, contours, heirarchy = cv2.findContours(image, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
     if len(contours) == 0:
         return None, None, None, None
 

@@ -51,3 +51,6 @@ class Constants():
     bgr2lcc_operator = np.array([[.114, .587, .299],
                                    [-1, .5, .5],
                                    [0, -.866, 866]])
+
+    n_bovw_groups = 1000
+    codebook_file = 'sift_word_codebook'
