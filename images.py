@@ -64,9 +64,10 @@ class ImageGenerator():
 
     def files_to_labels(self, files):
         file_lookup = {}
-        for key, file in self.file_dict.items():
-            file_lookup[file] = key
-        classes = np.empty((len(files))).astype('str')
+        for key, fileset in self.file_dict.items():
+            for file in fileset:
+                file_lookup[file] = key
+        classes = np.empty((len(files))).astype('uint8')
         i = 0
         for file in files:
             classes[i] = file_lookup[file]

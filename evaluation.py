@@ -12,11 +12,13 @@ import cv2
 import numpy as np
 from copy import copy
 import matplotlib.pyplot as plt
+import re
 import pickle
 from sklearn.model_selection import train_test_split, cross_validate, StratifiedKFold
 from sklearn.metrics import accuracy_score, balanced_accuracy_score, f1_score
 from sklearn.ensemble import ExtraTreesClassifier
 from bag_of_words import *
+from classifiers import *
 
 
 def show_images(image_set, compare_func = None):
@@ -42,7 +44,7 @@ def show_images(image_set, compare_func = None):
     on_change(0)
 
 def print_feature_importances(generator, importances, plot = True):
-    feature_names = generator.get_feature_positions()
+    feature_names = generator.f_dict
     labels = []
     sums = []
     for name, idx in feature_names.items():
@@ -62,7 +64,7 @@ def print_feature_importances(generator, importances, plot = True):
 
 def classwise_importances(x, y, generator, parent = None):
     model = ExtraTreesClassifier(n_estimators = 100)
-    feature_names = generator.get_feature_positions()
+    feature_names = generator.f_dict
     if parent is None:
         for parent, child_classes in Constants.class_hierarchy.items():
             for item in set(y):
@@ -93,12 +95,17 @@ def save_to_pickle(obj, file_path):
          pickle.dump(obj, f)
          print('file saved to', file_path)
 
-def get_featureset(generator, total = None, batch_size = 20):
+def get_featureset(generator, total = None, batch_size = None):
     all_features = []
     all_labels = []
     all_images = []
     if total is None:
         total = generator.num_images
+    if batch_size is None:
+        #needed if memory is an issue
+        #makes some stuff weird if it needs to see the images before feature selection
+        #like with fuzyy cmeans or bovw from scratch
+        batch_size = total
     for _ in range(int(total/batch_size)):
         print(_*batch_size/total, '%')
         features, labels, images = generator.get_features(batch_size)
@@ -108,27 +115,6 @@ def get_featureset(generator, total = None, batch_size = 20):
     return np.vstack(all_features), all_labels, all_images
 
 
-def get_class_args(files, parent = None):
-    if parent is None:
-        classes = list( Constants.class_hierarchy.keys() )
-        parent_pattern = re.compile('')
-    else:
-        classes = Constants.class_hierarchy[parent]
-        parent_pattern = re.compile(parent)
-    class_patterns = [re.compile(c) for c in classes]
-    y = []
-    good_files = []
-    for idx in range(len(files)):
-        file = files[idx]
-        if parent_pattern.search(file) is None:
-            continue
-        for c in range(len(classes)):
-            if class_patterns[c].search(file) is not None:
-                y.append(classes[c])
-                good_files.append(idx)
-                break
-    return np.array(good_files), np.array(y)
-
 def crossvalidate(x,y,model):
     kfold = StratifiedKFold(n_splits = 5)
     y_pred = np.empty(y.shape).astype('str')
@@ -136,8 +122,13 @@ def crossvalidate(x,y,model):
     for train_index, test_index in kfold.split(x,y):
        model.fit(x[train_index], y[train_index])
        y_pred[test_index] = model.predict(x[test_index])
-       importances.append(model.feature_importances_)
-    return y_pred, np.mean(importances, axis = 0)
+       if importances is not None:
+           try:
+               importances.append(model.feature_importances_)
+           except:
+               importances = None
+    importances = np.mean(importances, axis = 0) if importances is not None else None
+    return y_pred, importances
 
 
 def save_result(ytrue, ypred, x_importances, feature_names):
@@ -151,7 +142,7 @@ def save_result(ytrue, ypred, x_importances, feature_names):
     return scores
 
 def get_cascade_classifier_results(features, files, generator, top_level = None, model = None):
-    feature_names = generator.get_feature_positions()
+    feature_names = generator.f_dict
     all_args, y_true = get_class_args(files, parent = top_level)
     if len(all_args) == 0:
         return None
@@ -177,34 +168,50 @@ def get_cascade_classifier_results(features, files, generator, top_level = None,
         staged_results[str(set(y_true))] = save_result(y_true, y_pred, importances, feature_names)
     return staged_results
 
-def save_universal_codebook(image_file = 'processes_images_all'):
+
+def save_universal_codebook(image_file = Constants.default_image_pickle):
     images = load_pickle(image_file)
-    codebook, _ = bovw_codebook(images)
+    codebook, _ = bovw_codebook(images, dense = True)
     save_to_pickle(codebook, Constants.codebook_file)
 
+#images = load_pickle(Constants.default_image_pickle)
+#files = load_pickle(Constants.default_file_pickle)
+#
+#generator = FeatureGenerator(denoise = False, crop = True,
+#                             remove_borders= True)
+#features, files, images = get_featureset(generator, total = 1200, batch_size = 12)
+#print('features done')
 
-save_universal_codebook()
+from sklearn.svm import SVC
+cc = CascadeClassifier(SVC(kernel = 'linear'))
 
-generator = FeatureGenerator(denoise = True, crop = True,
-                             remove_borders= True,
-                             class_roots = None,
-                             bovw_codebook = Constants.codebook_file)
-features, files, images = get_featureset(generator, total = generator.num_images)
+from sklearn.model_selection import StratifiedKFold
+skf = StratifiedKFold(n_splits = 4)
+y = classes_from_files(files)
+skf.get_n_splits(features, y)
+accuracys =[]
+balanced_accuracys = []
+for train_ind, test_ind in skf.split(features, y):
+    x_train, files_train = features[train_ind], np.array(files)[train_ind]
+    x_test, files_test = features[test_ind], np.array(files)[test_ind]
+    y_test = classes_from_files(files_test)
+    cc.fit(x_train, files_train)
+    y_pred = cc.predict(x_test)
+    accuracys.append( accuracy_score(y_test, y_pred))
+    balanced_accuracys.append( balanced_accuracy_score(y_test, y_pred))
+print(np.mean(accuracys), np.mean(balanced_accuracys))
 
-#images = load_pickle('processes_images_all')
-#files = load_pickle('image_files_all')
-#features = generator.extract_features(images[0:1200])
 
-gbc = ExtraTreesClassifier(n_estimators = 200)
-accuracys = {'Top': get_cascade_classifier_results(features, files, generator, None, gbc)}
-for level in Constants.class_hierarchy.keys():
-    results = get_cascade_classifier_results(features, files, generator, level, gbc)
-    if results is not None:
-        accuracys[level] = results
-print(accuracys['Microscopy'])
+node_cv = cc.node_cv(features, files)
 
 #
-#images = load_pickle('processes_images_all')
+#gbc = ExtraTreesClassifier(n_estimators = 300)
+#accuracys = {'Top': get_cascade_classifier_results(x, y, generator, None, gbc)}
+#for level in Constants.class_hierarchy.keys():
+#    results = get_cascade_classifier_results(x, y, generator, level, gbc)
+#    if results is not None:
+#        accuracys[level] = results
+#print(accuracys['Experimental'])
 
 #save_to_pickle(features, 'image_features_all')
 #save_to_pickle(files, 'image_files_all')

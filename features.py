@@ -13,9 +13,11 @@ from scipy.fftpack import rfft
 from constants import Constants
 import pickle
 from images import *
+from sklearn.decomposition import PCA
 from skimage.transform import radon
 import texture
 from bag_of_words import *
+from dl_features import deep_features
 
 class FeatureGenerator(ImageGenerator):
 
@@ -31,19 +33,20 @@ class FeatureGenerator(ImageGenerator):
             self.codebook = None
         self.color_features = {
                 'color_histograms': get_color_histogram,
-                'oRBG_histograms': orgb_histogram,
-                'SIFT BOW': lambda x: sift_words(x, self.codebook),
+                'VGG16_features': deep_features,
+#                'oRBG_histograms': orgb_histogram,
+#                'SIFT BOW': lambda x: sift_words(x, self.codebook, dense = True),
 #                'sobel_histograms': sobel_hist
                 }
         self.gray_features = {
                 'linear binary patterns': lbp,
                 'HOG': multiscale_hog,
                 'gray histogram': multiscale_histogram,
-                'gabor sums': gabor_sums,
-                'radon_histograms': radon_hists,
-                'Chebyshev histograms': chebyshev2d,
-                'Meijering sum': meijering_sum,
-                'Hu Moments': lambda x: cv2.HuMoments(cv2.moments(x)).ravel(),
+#                'gabor sums': gabor_sums,
+#                'radon_histograms': radon_hists,
+#                'Chebyshev histograms': chebyshev2d,
+#                'Meijering sum': meijering_sum,
+#                'Hu Moments': lambda x: cv2.HuMoments(cv2.moments(x)).ravel(),
                 'fft of Edges': fft_edges,
 #                'Tamura Texture': tamura_features
                 }
@@ -52,6 +55,7 @@ class FeatureGenerator(ImageGenerator):
 #                'fft radon_histogram': radon_hists,
 #                'fft chebyshev histogram': chebyshev2d
                 }
+        self.f_dict = self.get_feature_positions()
 
     def extract_features(self, images):
         x = []
@@ -68,7 +72,7 @@ class FeatureGenerator(ImageGenerator):
 
     def get_feature_positions(self):
         p = 0
-        dummy_image = 10*np.random.random((100, 100, 3)).astype('float32')
+        dummy_image = 255*np.random.random((244, 244, 3)).astype('float32')
         dummy_gray_image = dummy_image.mean(axis = 0)
         feature_inds = {}
         def add_names(im, fdict):
@@ -84,7 +88,6 @@ class FeatureGenerator(ImageGenerator):
         add_names(dummy_gray_image, self.fft_features)
         return feature_inds
 
-
     def image_features(self, image):
         features = []
         def add_features(i, funcs):
@@ -98,6 +101,27 @@ class FeatureGenerator(ImageGenerator):
         add_features(gray_img, self.gray_features)
         add_features(fft_image, self.fft_features)
         return np.hstack(features).ravel()
+
+    def featureset_pca(self, x, variance = .95):
+        feature_names = self.get_feature_positions()
+        new_features = []
+        new_positions = {}
+        pca = PCA()
+        def pca_to_variance(x):
+            x_pca = pca.fit_transform(x)
+            n_features = 1
+            while pca.explained_variance_ratio_[0:n_features].sum() < variance:
+                n_features += 1
+            return x_pca[:, 0:n_features]
+        loc = 0
+        for name, idxs in feature_names.items():
+            x_set = x[:, idxs]
+            x_new = pca_to_variance(x_set)
+            new_features.append(x_new)
+            new_positions[name] = np.arange(loc, loc + x_new.shape[1])
+            loc += x_new.shape[1]
+        self.f_dict = new_positions
+        return np.hstack(new_features)
 
 def get_color_histogram(image, bins = 15,
                         additional_color_spaces = [
@@ -122,7 +146,12 @@ def get_colorspace_histogram(image, bins = 15, range_ = (0,255)):
             img_slice = image[:,:,channel]
         else:
             img_slice = image
-        color_histogram = multiscale_histogram(img_slice, range_ = range_)
+        #some color spacs have different bounds
+        if img_slice.max() <= 1.0001:
+            slice_range = (0,1)
+        else:
+            slice_range = range_
+        color_histogram = multiscale_histogram(img_slice, range_ = slice_range)
         hists.append(color_histogram.astype('float32'))
     return np.hstack(hists)
 
@@ -279,9 +308,9 @@ def bgr_to_orgb(image):
             theta = theta/2
         else:
             theta = np.pi/4 - theta/4
-        return rot_x(theta, pixel)
+        return  rot_x(theta, pixel)
     orgb_image = np.apply_along_axis(convert_pixel, 2, image)
-    return np.clip(orgb_image, 0, 1)
+    return orgb_image
 
 def orgb_histogram(image):
     orgb_image = bgr_to_orgb(image)
@@ -289,8 +318,16 @@ def orgb_histogram(image):
 
 def sift_words(image, codebook, dense = True):
     sift = cv2.xfeatures2d.SIFT_create()
-    desc = root_descriptor(image, sift, dense)
-    word_vector = extract_visual_words([desc], codebook)
+    desc = root_descriptor(image.astype('uint8'), sift, dense)
+    word_vector = extract_visual_words([desc], codebook).ravel()
     return word_vector/word_vector.sum()
+
+def tfidf_weights(matrix):
+    #takes an count ndarray and returns the tfidf wighitng of it
+    idf = matrix.shape[0]/np.sum(matrix, axis = 0)
+    idf = np.log(idf)
+    tf = 1/np.sum(matrix, axis = 1)
+    matrix = matrix*tf*idf
+    return matrix
 
 get_classes = lambda file_dict: np.hstack([k*np.ones((len(v), )) for k,v in file_dict.items()]).astype('int32')

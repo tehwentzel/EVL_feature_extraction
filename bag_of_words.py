@@ -1,9 +1,10 @@
 import numpy as np
 import cv2
-from sklearn.cluster import KMeans
+from sklearn.cluster import KMeans, MiniBatchKMeans
 from scipy.spatial import KDTree
 from constants import Constants
 from sklearn.feature_selection import mutual_info_classif
+from sklearn.decomposition import PCA
 
 class BagOfWords():
 
@@ -71,7 +72,7 @@ def bovw_codebook(images, n_img_clusters = 50, n_total_clusters = None, dense = 
             clusters.append(keypoints)
     print('loading done, clustering...')
     clusters = np.vstack(clusters)
-    codebook = KMeans(n_clusters = n_total_clusters, n_init = 5).fit(clusters)
+    codebook = MiniBatchKMeans(n_clusters = n_total_clusters).fit(clusters)
     codebook = KDTree(codebook.cluster_centers_)
     print('clustering complete...')
     return codebook, image_sifts
@@ -79,10 +80,10 @@ def bovw_codebook(images, n_img_clusters = 50, n_total_clusters = None, dense = 
 def extract_visual_words(descriptors, codebook):
     if codebook is None:
         return None
-    bow = np.zeros((len(descriptors), descriptors[0].shape[1]))
+    bow = np.zeros((len(descriptors),  codebook.data.shape[0]))
     for i in range(len(descriptors)):
         keypoints = descriptors[i]
-        if keypoints:
+        if keypoints is not False:
             words = codebook.query(keypoints)[1]
             for word in words:
                 bow[i,word] += 1
