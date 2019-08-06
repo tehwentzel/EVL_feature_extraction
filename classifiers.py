@@ -7,7 +7,7 @@ Created on Fri Aug  2 12:14:43 2019
 import numpy as np
 import re
 from constants import Constants
-from sklearn.model_selection import cross_validate, cross_val_predict, cross_val_score
+from sklearn.model_selection import cross_validate, cross_val_predict, cross_val_score, StratifiedKFold
 from sklearn.feature_selection import mutual_info_classif, SelectPercentile
 from sklearn.metrics import f1_score, accuracy_score, balanced_accuracy_score, make_scorer
 import copy
@@ -31,22 +31,22 @@ class NodeClassifier():
         return features[args], labels, args
 
     def fit(self, features, files):
-        print('fitting', self.parent_node)
+#        print('fitting', self.parent_node)
         x, y, args = self.get_xy(features, files)
-        print('files found')
+#        print('files found')
         if x is None:
-            print('skipping', self.parent_node)
+#            print('skipping', self.parent_node)
             return
         if len(set(y)) == 1:
-            print('only one class for', self.parent_node)
+#            print('only one class for', self.parent_node)
             self.constant_class = y[0]
             self.is_fit = True
             return
         self.select_features(x,y)
         x = x[:, self.features_to_use]
-        print('features selected', x.shape[1]/features.shape[1])
+#        print('features selected', x.shape[1]/features.shape[1])
         self.classifier.fit(x,y)
-        print('fitted')
+#        print('fitted')
         if hasattr(self.classifier, 'feature_importances_'):
             self.feature_importances_[self.features_to_use] = self.classifier.feature_importances_
         self.is_fit = True
@@ -74,7 +74,7 @@ class NodeClassifier():
         scoring['accuracy'] = accuracy_score
         scoring['balanced_accuracy'] = balanced_accuracy_score
         scoring['f1_micro'] = lambda y1, y2: f1_score(y1, y2, average = 'micro')
-        scoring = {key: make_scorer(val) for key,val in scoring.items}
+        scoring = {key: make_scorer(val) for key,val in scoring.items()}
         results = cross_validate(self.classifier, x, y, cv = cv, scoring = scoring)
         return results['test_score']
 
@@ -124,10 +124,72 @@ class CascadeClassifier():
             y_set = set(y_pred)
         return y_pred
 
-    def node_cv(self, features, files):
-        return {node: classifier.cross_validate(features, files) for node, classifier in self.classifiers.items()}
+#
+#skf = StratifiedKFold(n_splits = 4)
+#y = classes_from_files(files)
+#skf.get_n_splits(features, y)
+#accuracys =[]
+#balanced_accuracys = []
+#for train_ind, test_ind in skf.split(features, y):
+#    x_train, files_train = features[train_ind], np.array(files)[train_ind]
+#    x_test, files_test = features[test_ind], np.array(files)[test_ind]
+#    y_test = classes_from_files(files_test)
+#    cc.fit(x_train, files_train)
+#    y_pred = cc.predict(x_test)
+#    accuracys.append( accuracy_score(y_test, y_pred))
+#    balanced_accuracys.append( balanced_accuracy_score(y_test, y_pred))
+
+    def cv_score(self, features, files, n_splits = 3):
+        skf = StratifiedKFold(n_splits = n_splits)
+        y = classes_from_files(files)
+        skf.get_n_splits(features, y)
+        accuracys = {c: 0 for c in self.classifiers.keys()}
+        balanced_accuracys = {c: 0 for c in self.classifiers.keys()}
+        overall_accuracys = []
+        overall_balanced = []
+        concat = lambda x,y,c: x[c] + y[c]
+        for train_ind, test_ind in skf.split(features, y):
+            x_train, files_train = features[train_ind], np.array(files)[train_ind]
+            x_test, files_test = features[test_ind], np.array(files)[test_ind]
+            x_train, x_test = normalize(x_train, x_test)
+            self.fit(x_train, files_train)
+            y_pred = self.predict(x_test)
+            y_test = classes_from_files(files_test)
+            accuracy, balanced_accuracy = self.score(x_test, files_test)
+            for classifier in self.classifiers.keys():
+                accuracys[classifier] = concat(accuracys, accuracy, classifier)
+                balanced_accuracys[classifier] = concat(balanced_accuracys, balanced_accuracy, classifier)
+            overall_accuracys.append(accuracy_score(y_test, y_pred))
+            overall_balanced.append( balanced_accuracy_score(y_test, y_pred))
+        dict_divide = lambda d: {k: v/n_splits for k, v in d.items()}
+        accuracys = dict_divide(accuracys)
+        balanced_accuracys = dict_divide(balanced_accuracys)
+        accuracys['All'] = np.mean(overall_accuracys)
+        balanced_accuracys['All'] = np.mean(overall_balanced)
+        return accuracys, balanced_accuracys
+
+    def score(self, features, files):
+        accuracys = {c: 0 for c in self.classifiers.keys()}
+        balanced_accuracys = {c: 0 for c in self.classifiers.keys()}
+        for cname, classifier in self.classifiers.items():
+            valid_args, _ = get_class_args(files, classifier.parent_node)
+            if len(valid_args) <= 1:
+                continue
+            x = features[valid_args]
+            valid_files = files[valid_args]
+            y = classes_from_files(valid_files, stop_nodes = classifier.classes)
+            y_pred = classifier.predict(x)
+            accuracys[cname] = accuracy_score(y, y_pred)
+            balanced_accuracys[cname] = balanced_accuracy_score(y, y_pred)
+#        print(accuracys)
+        return accuracys, balanced_accuracys
 
 
+def normalize(x1, x2 = None):
+    regularize = lambda v: (v - x1.mean(axis = 1))/(x1.std(axis = 1))
+    if x2 is not None:
+        x2 = regularize(x2)
+    return regularize(x1), regularize(x2)
 
 def classes_from_files(files, parent = None,  stop_nodes = None, depth = 100):
     all_args, labels = get_class_args(files, parent)

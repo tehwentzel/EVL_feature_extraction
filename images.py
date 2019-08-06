@@ -78,22 +78,43 @@ class ImageGenerator():
     def get_images(self, num_images = 10, base_classes = None):
         if base_classes is None:
             base_classes = list(self.file_dict.keys())
+        num_images = num_images % (np.sum([len(self.file_dict[c]) for c in base_classes])+1)
+        if num_images == np.sum([len(v) for v in self.file_dict.values()]):
+            return self.get_all_images(base_classes)
         good_classes = np.argwhere(np.array(self.inverse_class_positions) >= 0).astype('int32')
         classes = np.array(base_classes)[good_classes.ravel()]
         images = []
         labels = []
+        label_pos = 0
         for idx in range(num_images):
-            label = np.random.choice(classes)
+            label = classes[label_pos]
             file_position = self.inverse_class_positions[label]
-            if file_position <= 0:
+            while file_position < 0:
                 pos = np.argwhere(classes == label)
                 classes = np.delete(classes, pos)
+                label_pos = label_pos%len(classes)
+                label = classes[label_pos]
+                file_position = self.inverse_class_positions[label]
             self.inverse_class_positions[label] -= 1
+            label_pos = (label_pos + 1)%len(classes)
             if self.reset_classes():
                 classes = base_classes
             image_file = self.file_dict[label][file_position]
             images.append( self.process_image_file(image_file) )
             labels.append(image_file)
+        return images, labels
+
+    def get_all_images(self, base_classes = None):
+        if base_classes is None:
+            base_classes = list(self.file_dict.keys())
+        images = []
+        labels = []
+        for c in base_classes:
+            files = self.file_dict[c]
+            for file in files:
+                image = self.process_image_file(file)
+                images.append(image)
+                labels.append(file)
         return images, labels
 
     def reset_classes(self, count = 0):
@@ -158,7 +179,7 @@ class ImageGenerator():
             if upper_bound < 245 and lower_bound > 10:
                 return self.crop_image(img, reference_image, upper_bound + 10, lower_bound - 10)
             else:
-                print('error in cropping image')
+#                print('error in cropping image')
                 return img
         x0, y0 = valid_coords.min(axis = 0)
         x1, y1 = valid_coords.max(axis = 0) + 1

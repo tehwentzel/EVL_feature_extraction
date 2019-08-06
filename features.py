@@ -14,8 +14,10 @@ from constants import Constants
 import pickle
 from images import *
 from sklearn.decomposition import PCA
+import cv_functions
 from skimage.transform import radon
 import texture
+from skfuzzy import cmeans, cmeans_predict
 from bag_of_words import *
 from dl_features import deep_features
 
@@ -33,27 +35,28 @@ class FeatureGenerator(ImageGenerator):
             self.codebook = None
         self.color_features = {
                 'color_histograms': get_color_histogram,
+                'fuzzy_opponent_histogram': fuzzy_opponent_histogram,
                 'VGG16_features': deep_features,
 #                'oRBG_histograms': orgb_histogram,
 #                'SIFT BOW': lambda x: sift_words(x, self.codebook, dense = True),
-#                'sobel_histograms': sobel_hist
+                'sobel_histograms': sobel_hist
                 }
         self.gray_features = {
                 'linear binary patterns': lbp,
                 'HOG': multiscale_hog,
                 'gray histogram': multiscale_histogram,
-#                'gabor sums': gabor_sums,
-#                'radon_histograms': radon_hists,
-#                'Chebyshev histograms': chebyshev2d,
-#                'Meijering sum': meijering_sum,
-#                'Hu Moments': lambda x: cv2.HuMoments(cv2.moments(x)).ravel(),
+                'gabor sums': gabor_sums,
+                'radon_histograms': radon_hists,
+                'Chebyshev histograms': chebyshev2d,
+                'Meijering sum': meijering_sum,
+                'Hu Moments': lambda x: cv2.HuMoments(cv2.moments(x)).ravel(),
                 'fft of Edges': fft_edges,
-#                'Tamura Texture': tamura_features
+                'Tamura Texture': tamura_features
                 }
         self.fft_features = {
                 'fft multiscale_histograms':lambda x: multiscale_histogram(x, range_ = (0, 800)),
-#                'fft radon_histogram': radon_hists,
-#                'fft chebyshev histogram': chebyshev2d
+                'fft radon_histogram': radon_hists,
+                'fft chebyshev histogram': chebyshev2d
                 }
         self.f_dict = self.get_feature_positions()
 
@@ -231,25 +234,9 @@ def multiscale_hog(img, n_scales = 3, n_bins = 50):
     for bincount in bincounts:
         if bincount != bincounts[0]:
             img = cv2.pyrDown(img)
-        scale_hist = get_hog(img, bincount)
+        scale_hist = cv_functions.get_hog(img, bincount)
         hist.append(scale_hist)
     return np.hstack(hist)
-
-def get_hog(img, n_bins = 50):
-    if len(img.shape) > 2:
-        img = cv2.cvtColor(copy(img), cv2.COLOR_BGR2GRAY)
-    gx = cv2.Sobel(img, cv2.CV_32F, 1, 0)
-    gy = cv2.Sobel(img, cv2.CV_32F, 0, 1)
-    magnitude, angle = cv2.cartToPolar(gx,gy)
-    magnitude = magnitude.ravel()
-    angle = np.nan_to_num(angle % np.pi).ravel()
-    histogram = np.zeros((n_bins,))
-    bin_width = np.pi/n_bins
-    for idx in range(len(magnitude)):
-        histogram[ int(angle[idx]//bin_width) ] += magnitude[idx]
-    if np.linalg.norm(histogram) <= 0:
-        return np.zeros(histogram.shape)
-    return histogram/np.linalg.norm(histogram)
 
 def binary_integral(gray_image):
     assert(len(gray_image.shape) == 2)
@@ -287,34 +274,11 @@ def chebyshev2d(image, degree = 20, bins = 10):
         hist = np.arange(0, bins)
     return hist
 
-def rot_x(theta, target):
-    #applies a rotation matrix around the x axis
-    #used for the roation in the oRGb color transform
-    rotation = np.array([
-            [1, 0, 0],
-            [0, np.cos(theta), -np.sin(theta)],
-            [0, np.sin(theta), np.cos(theta)]
-        ])
-
-    return np.matmul(rotation, target)
-
-def bgr_to_orgb(image):
-    operator = Constants.bgr2lcc_operator
-    image = image.astype('float32')/255.0
-    def convert_pixel(pixel):
-        pixel = np.matmul(operator, pixel)
-        theta = np.arctan2(pixel[1], pixel[2])
-        if theta < np.pi/3:
-            theta = theta/2
-        else:
-            theta = np.pi/4 - theta/4
-        return  rot_x(theta, pixel)
-    orgb_image = np.apply_along_axis(convert_pixel, 2, image)
-    return orgb_image
 
 def orgb_histogram(image):
-    orgb_image = bgr_to_orgb(image)
-    return get_colorspace_histogram(orgb_image, range_ = (0,1))
+    orbg_image = cv_functions.bgr_to_orgb(image)
+    h = [im2hist(orbg_image[:,:,d], 15, range_ = (0,1)) for d in range(orbg_image.ndim)]
+    return np.hstack(h)
 
 def sift_words(image, codebook, dense = True):
     sift = cv2.xfeatures2d.SIFT_create()
@@ -329,5 +293,36 @@ def tfidf_weights(matrix):
     tf = 1/np.sum(matrix, axis = 1)
     matrix = matrix*tf*idf
     return matrix
+
+def fuzzy_histogram(matrix, range_ = (0,1), n_bins = 50):
+    bin_edge_width = int(n_bins**(1/3))
+    bin_centers = cv_functions.uniform_space_centers(range_[0], range_[1], bin_edge_width)
+    image = matrix.reshape(-1,3)
+    print(image.shape, bin_centers.shape)
+    fuzzy_centers = cmeans_predict(image.T, bin_centers, 2, .005, 1000)[0].T
+    hist = fuzzy_centers.sum(axis = 0).ravel()
+    hist = hist/np.sum(hist)
+    return hist
+
+def fuzzy_opponent_histogram(matrix, range_ = (0,1), n_bins = [64, 27, 27]):
+    image = cv_functions.bgr_to_opponent(matrix)
+    hists = []
+    def scaled_hist(bins, image):
+        bin_edge_width = int(bins**(1/3))
+        bin_centers = cv_functions.uniform_space_centers(range_[0],
+                                                         range_[1],
+                                                         bin_edge_width)
+        fuzzy_centers = cmeans_predict(image.reshape(-1,3).T,
+                                       bin_centers,
+                                       2, .005, 1000)[0].T
+        hist = fuzzy_centers.sum(axis = 0).ravel()
+        return hist/np.sum(hist)
+    for i in range(len(n_bins)):
+        if i > 0:
+            image = cv2.pyrDown(image)
+        hist = scaled_hist(n_bins[i], image)
+        hists.append(hist)
+    return np.hstack(hists)
+
 
 get_classes = lambda file_dict: np.hstack([k*np.ones((len(v), )) for k,v in file_dict.items()]).astype('int32')

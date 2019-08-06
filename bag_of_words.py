@@ -6,31 +6,17 @@ from constants import Constants
 from sklearn.feature_selection import mutual_info_classif
 from sklearn.decomposition import PCA
 
-class BagOfWords():
+class PCAKDTree():
 
-    def __init__(self):
-        self.codebook = None
-        self.args = None
+    def __init__(self, points, n_features = 15):
+        self.n_features = len(points)
+        self.pca = PCA(n_features).fit(points)
+        self.points = self.pca.transform(points)
+        self.kd_tree = KDTree(self.points)
 
-    def fit(self, x, c1 = 100, c2 = None, dense = True):
-        self.codebook, _ = bovw_codebook(x, c1, c2, dense)
-
-    def transform(self, x, y = None,  info_threshold = .05):
-        bow = extract_visual_words(x, self.codebook)
-        if y is not None:
-            assert(bow.shape[0] == y.shape[0])
-            info = mutual_info_classif(bow, y)
-            args = np.argwhere(info > info_threshold)
-            bow = bow[:, args]
-        return bow
-
-    def fit_transform(self, x, y = None,
-                      info_threshold = .05,
-                      c1 = 100, c2 = None,
-                      dense = True):
-        self.fit(x, c1, c2, dense)
-        bow = self.transform(x, y, info_threshold)
-        return bow
+    def get_nearest(self, keypoints):
+        transformed = self.pca.transform(keypoints)
+        return self.kd_tree.query(transformed)[1]
 
 def root_descriptor(img, descriptor, dense = True):
     desc = get_descriptors(img, descriptor, dense)
@@ -73,18 +59,18 @@ def bovw_codebook(images, n_img_clusters = 50, n_total_clusters = None, dense = 
     print('loading done, clustering...')
     clusters = np.vstack(clusters)
     codebook = MiniBatchKMeans(n_clusters = n_total_clusters).fit(clusters)
-    codebook = KDTree(codebook.cluster_centers_)
+    codebook = PCAKDTree(codebook.cluster_centers_)
     print('clustering complete...')
     return codebook, image_sifts
 
 def extract_visual_words(descriptors, codebook):
     if codebook is None:
         return None
-    bow = np.zeros((len(descriptors),  codebook.data.shape[0]))
+    bow = np.zeros((len(descriptors),  codebook.kd_tree.data.shape[0]))
     for i in range(len(descriptors)):
         keypoints = descriptors[i]
         if keypoints is not False:
-            words = codebook.query(keypoints)[1]
+            words = codebook.get_nearest(keypoints)
             for word in words:
                 bow[i,word] += 1
     return bow

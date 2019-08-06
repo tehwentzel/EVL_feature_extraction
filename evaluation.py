@@ -177,41 +177,23 @@ def save_universal_codebook(image_file = Constants.default_image_pickle):
 #images = load_pickle(Constants.default_image_pickle)
 #files = load_pickle(Constants.default_file_pickle)
 #
-#generator = FeatureGenerator(denoise = False, crop = True,
-#                             remove_borders= True)
-#features, files, images = get_featureset(generator, total = 1200, batch_size = 12)
-#print('features done')
+
+generator = FeatureGenerator(denoise = False, crop = True,
+                             remove_borders= True, bovw_codebook=Constants.codebook_file)
+features, files, images = get_featureset(generator, 1800, 18)
+print('features done')
+c = classes_from_files(files)
+print(ExtraTreesClassifier(n_estimators=300).fit(features, c).feature_importances_)
 
 from sklearn.svm import SVC
-cc = CascadeClassifier(SVC(kernel = 'linear'))
+rbf_cc = CascadeClassifier(SVC(kernel = 'rbf'))
+rbf_a, rbc_ba = rbf_cc.cv_score(features, files)
 
-from sklearn.model_selection import StratifiedKFold
-skf = StratifiedKFold(n_splits = 4)
-y = classes_from_files(files)
-skf.get_n_splits(features, y)
-accuracys =[]
-balanced_accuracys = []
-for train_ind, test_ind in skf.split(features, y):
-    x_train, files_train = features[train_ind], np.array(files)[train_ind]
-    x_test, files_test = features[test_ind], np.array(files)[test_ind]
-    y_test = classes_from_files(files_test)
-    cc.fit(x_train, files_train)
-    y_pred = cc.predict(x_test)
-    accuracys.append( accuracy_score(y_test, y_pred))
-    balanced_accuracys.append( balanced_accuracy_score(y_test, y_pred))
-print(np.mean(accuracys), np.mean(balanced_accuracys))
+l_cc = CascadeClassifier(SVC(kernel = 'linear'))
+l_a, l_ba = l_cc.cv_score(features, files)
 
-
-node_cv = cc.node_cv(features, files)
-
-#
-#gbc = ExtraTreesClassifier(n_estimators = 300)
-#accuracys = {'Top': get_cascade_classifier_results(x, y, generator, None, gbc)}
-#for level in Constants.class_hierarchy.keys():
-#    results = get_cascade_classifier_results(x, y, generator, level, gbc)
-#    if results is not None:
-#        accuracys[level] = results
-#print(accuracys['Experimental'])
+et_cc = CascadeClassifier(ExtraTreesClassifier(n_estimators = 300))
+et_a, et_ba = et_cc.cv_score(features, files)
 
 #save_to_pickle(features, 'image_features_all')
 #save_to_pickle(files, 'image_files_all')
