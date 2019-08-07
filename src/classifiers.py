@@ -186,7 +186,8 @@ class CascadeClassifier():
 
 
 def normalize(x1, x2 = None):
-    regularize = lambda v: (v - x1.mean(axis = 1))/(x1.std(axis = 1))
+    reg_coeffs = np.nan_to_num(x1.mean(axis = 0)/x1.std(axis = 0))
+    regularize = lambda v: v*reg_coeffs
     if x2 is not None:
         x2 = regularize(x2)
     return regularize(x1), regularize(x2)

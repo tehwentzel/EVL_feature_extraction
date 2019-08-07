@@ -62,26 +62,21 @@ def print_feature_importances(generator, importances, plot = True):
         plt.barh(x,sums, tick_label = labels)
         plt.show()
 
-def classwise_importances(x, y, generator, parent = None):
-    model = ExtraTreesClassifier(n_estimators = 100)
+def classwise_importances(x, y, generator, parent = None, show_all = True):
+    model = ExtraTreesClassifier( n_estimators = int(x.shape[1]**(1/3)) )
     feature_names = generator.f_dict
-    if parent is None:
-        for parent, child_classes in Constants.class_hierarchy.items():
-            for item in set(y):
-                if item in child_classes:
-                    class_names = child_classes
-                    break
-    for c in range(len(class_names)):
-        name = class_names[c]
-        if name not in set(y):
-            continue
-        binary_y = (y == name).astype('int32')
-        xtrain, xtest, ytrain, ytest = train_test_split(x, binary_y, stratify = binary_y)
+    def show(x, y, name):
+        xtrain, xtest, ytrain, ytest = train_test_split(x, y, stratify = y)
         model.fit(xtrain, ytrain.ravel())
         print(name)#, model.score(xtest, ytest.ravel()))
         for fname, idx in feature_names.items():
             print(fname, np.round(model.feature_importances_[idx].sum(), 4))
         print()
+    if show_all:
+        for name in np.unique(y):
+            binary_y = (y == name).astype('int32')
+            show(x, binary_y, name)
+    show(x, y, 'All')
 
 def load_pickle(file_path = 'cleaned_images'):
     file_path = 'data\\' + file_path + '.pickle'
@@ -176,17 +171,19 @@ def save_universal_codebook(image_file = Constants.default_image_pickle):
 
 #images = load_pickle(Constants.default_image_pickle)
 #files = load_pickle(Constants.default_file_pickle)
-#
+#save_universal_codebook()
+
 
 generator = FeatureGenerator(denoise = False, crop = True,
                              remove_borders= True, bovw_codebook=Constants.codebook_file)
 features, files, images = get_featureset(generator, 1800, 18)
 print('features done')
 c = classes_from_files(files)
-print(ExtraTreesClassifier(n_estimators=300).fit(features, c).feature_importances_)
+print(classwise_importances(features, c, generator))
+
 
 from sklearn.svm import SVC
-rbf_cc = CascadeClassifier(SVC(kernel = 'rbf'))
+rbf_cc = CascadeClassifier(SVC(kernel = 'rbf', gamma=1))
 rbf_a, rbc_ba = rbf_cc.cv_score(features, files)
 
 l_cc = CascadeClassifier(SVC(kernel = 'linear'))

@@ -37,26 +37,26 @@ class FeatureGenerator(ImageGenerator):
                 'color_histograms': get_color_histogram,
                 'fuzzy_opponent_histogram': fuzzy_opponent_histogram,
                 'VGG16_features': deep_features,
-#                'oRBG_histograms': orgb_histogram,
-#                'SIFT BOW': lambda x: sift_words(x, self.codebook, dense = True),
+                'oRBG_histograms': orgb_histogram,
+                'SIFT BOW': lambda x: sift_words(x, self.codebook, dense = True),
                 'sobel_histograms': sobel_hist
                 }
         self.gray_features = {
                 'linear binary patterns': lbp,
                 'HOG': multiscale_hog,
                 'gray histogram': multiscale_histogram,
-                'gabor sums': gabor_sums,
-                'radon_histograms': radon_hists,
-                'Chebyshev histograms': chebyshev2d,
-                'Meijering sum': meijering_sum,
+#                'gabor sums': gabor_sums,
+#                'radon_histograms': radon_hists,
+#                'Chebyshev histograms': chebyshev2d,
+#                'Meijering sum': meijering_sum,
                 'Hu Moments': lambda x: cv2.HuMoments(cv2.moments(x)).ravel(),
                 'fft of Edges': fft_edges,
                 'Tamura Texture': tamura_features
                 }
         self.fft_features = {
                 'fft multiscale_histograms':lambda x: multiscale_histogram(x, range_ = (0, 800)),
-                'fft radon_histogram': radon_hists,
-                'fft chebyshev histogram': chebyshev2d
+#                'fft radon_histogram': radon_hists,
+#                'fft chebyshev histogram': chebyshev2d
                 }
         self.f_dict = self.get_feature_positions()
 

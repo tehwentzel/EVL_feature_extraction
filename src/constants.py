@@ -56,7 +56,7 @@ class Constants():
                                    [-1, .5, .5],
                                    [0, -.866, 866]])
 
-    n_bovw_groups = 1000
+    n_bovw_groups = 1500
     codebook_file = 'sift_word_codebook'
     #I think this is reversed but you need to transpose for skfuzzy so it should for with skfuzzy.cmean_predict
     orgb_fuzzy_cluster_centers  = np.array([[ 6.70249862e-01, -6.95485846e-04,  6.04555859e+02],
