@@ -5,6 +5,7 @@ from scipy.spatial import KDTree
 from constants import Constants
 from sklearn.feature_selection import mutual_info_classif
 from sklearn.decomposition import PCA
+from lshash.lshash import LSHash
 
 class PCAKDTree():
 
@@ -18,6 +19,23 @@ class PCAKDTree():
         transformed = self.pca.transform(keypoints)
         return self.kd_tree.query(transformed)[1]
 
+class LSHAnn():
+    
+    def __init__(self, points, hash_size = 10, n_hashtables = 10):
+        self.lsh = LSHash(hash_size, points.shape[1], n_hashtables)
+        self.n_points = points.shape[0]
+        for n in range(self.n_points):
+            self.lsh.index(points[n], extra_data = n)
+        
+    def get_words(self, keypoints):
+        word_count = np.zeros((self.n_points,))
+        for k in range(keypoints.shape[0]):
+            out = self.lsh.query(keypoints[k], 1)
+            if len(out) > 0:
+                index = out[0][0][1]
+                word_count[index] += 1
+        return word_count
+        
 def root_descriptor(img, descriptor, dense = True):
     desc = get_descriptors(img, descriptor, dense)
     if desc is None:
