@@ -7,7 +7,9 @@ from sklearn.feature_selection import mutual_info_classif
 from sklearn.decomposition import PCA
 from lshash.lshash import LSHash
 
+#classes that attempt to make the search in construction a BOVW faster
 class PCAKDTree():
+    #performs PCA on SIFT vectors before doing NN search on a KD Tree
 
     def __init__(self, points, n_features = 15):
         self.n_features = len(points)
@@ -20,7 +22,9 @@ class PCAKDTree():
         return self.kd_tree.query(transformed)[1]
 
 class LSHAnn():
-
+    #using locality sensitive hashing to store and search for nearest neighbors
+    #will have a miss change.  larger n_hashtables means slower but less miss chance
+    #larger hash_size means fewer matches, so faster but higher miss change, I think
     def __init__(self, points, hash_size = 10, n_hashtables = 25):
         self.lsh = LSHash(hash_size, points.shape[1], n_hashtables)
         self.n_points = points.shape[0]
@@ -44,6 +48,8 @@ class LSHAnn():
         return word_count
 
 def root_descriptor(img, descriptor, dense = True):
+    #applies a kernel to SIFT descriptors to make euclidean distance do like a more histogrammy distance
+    #that works better apparently
     desc = get_descriptors(img, descriptor, dense)
     if desc is None:
         return desc
@@ -52,6 +58,7 @@ def root_descriptor(img, descriptor, dense = True):
     return desc
 
 def get_descriptors(img, detector, dense = True):
+    #get SIFT or dSIFT descriptors for an image
     if dense:
         step_size = 5
         kp = [cv2.KeyPoint(x, y, step_size) for y in range(0,img.shape[0], step_size) for x in range(0, img.shape[1], step_size)]
@@ -61,6 +68,7 @@ def get_descriptors(img, detector, dense = True):
 
 
 def bovw_codebook(images, n_img_clusters = 50, n_total_clusters = None, dense = True):
+    #saves a SIFT codebook, currently configured to uses LSH as the thing that we actually query
     if n_total_clusters is None:
         n_total_clusters = Constants.n_bovw_groups
     clusters = []
@@ -83,6 +91,7 @@ def bovw_codebook(images, n_img_clusters = 50, n_total_clusters = None, dense = 
             clusters.append(keypoints)
     print('loading done, clustering...')
     clusters = np.vstack(clusters)
+    #minibatch because this takes a lot of memory
     codebook = MiniBatchKMeans(n_clusters = n_total_clusters).fit(clusters)
     codebook = LSHAnn(codebook.cluster_centers_)
     print('clustering complete...')

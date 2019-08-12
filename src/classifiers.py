@@ -10,11 +10,16 @@ from constants import Constants
 from sklearn.model_selection import cross_validate, cross_val_predict, cross_val_score, StratifiedKFold
 from sklearn.feature_selection import mutual_info_classif, SelectPercentile
 from sklearn.metrics import f1_score, accuracy_score, balanced_accuracy_score, make_scorer
+from sklearn.ensemble import ExtraTreesClassifier
 import copy
+from Boruta import BorutaPy
 
 class NodeClassifier():
-
-    def __init__(self, base_classifier, node):
+    #classifier to use inside the cascade classifier
+    #uses and base estimator that follows the sklearn api
+    #saves a subset of features to use indiviudally, which is the miain thing here
+    def __init__(self, base_classifier, node, feature_selection = None):
+        self.feature_selection = None
         self.parent_node = node
         if node is None:
             self.classes = Constants.top_level_classes
@@ -80,28 +85,52 @@ class NodeClassifier():
 
 
     def select_features(self, x, y):
+        if self.feature_selection == 'info':
+            return self.select_by_info(x,y)
+        elif self.feature_selection == 'boruta':
+            return self.select_by_boruta(x,y, use_weak = True)
+        elif self.feature_selection == 'boruta_strong':
+            return self.select_by_boruta(x,y,use_weak = False)
+        else:
+            if self.feature_selection is not None:
+                print('invalid feature selection method? ' + self.parent_node)
+            self.features_to_use = np.arange(x.shape[1])
+            self.feature_importances_ = np.arange(x.shape[1])
+
+    def select_by_boruta(self, x, y, use_weak =True):
+        estimator = ExtraForestClassifier(n_estimators = x.shape[1]**(1/2),
+                                          max_depth = 10)
+        boruta = BorutaPy(estimator = estimator,
+                          n_estimators = 'auto')
+        boruta.fit(x,y)
+        self.features_to_use = boruta.support_
+        if use_weak:
+            self.features_to_use = self.features_to_use | boruta.support_weak_
+        self.features_to_use = self.features_to_use.astype('int32')
+        self.feature_importances = np.copy(self.features_to_use)
+
+    def select_by_info(self,x,y):
         args = np.arange(x.shape[1])
         self.feature_importances_ = np.zeros((x.shape[1],))
         feature_scores = mutual_info_classif(x,y)
         args = np.argwhere(feature_scores > 0).ravel()
-#        best_score = 0
-#        for percentile in np.linspace(50, 100, 6):
-#            selector = SelectPercentile(mutual_info_classif, percentile)
-#            x_subset = selector.fit_transform(x,y)
-#            score = cross_val_score(self.classifier, x_subset, y, cv = 3).mean()
-#            if score > best_score:
-#                best_score = score
-#                args = selector.get_support(True)
-#                self.feature_percentile = percentile
         self.features_to_use = args
         self.feature_importances_ = feature_scores
 
 class CascadeClassifier():
+    #classifier the holds a bunch of NodeClassifiers
+    #Each NodeClassifier follows the image heirarchy defined in constants.class_heirarchy
+    #top layer is defined in constants.top_level
 
-    def __init__(self, base_estimator):
+    def __init__(self, base_estimator, feature_selection_method = 'boruta', normalize_inputs = True):
         nodes = Constants.class_hierarchy.keys()
-        self.classifiers = {node: NodeClassifier(base_estimator, node) for node in nodes}
-        self.classifiers['Top'] = NodeClassifier(base_estimator, None)
+        if normalize_inputs:
+            self.normalize = lambda x, y: normalize(x, y)
+        else:
+            self.normalize = lambda x, y: x, y
+        make_node = lambda node: NodeClassifier(base_estimator, node, feature_selection_method)
+        self.classifiers = {node: make_node(node) for node in nodes}
+        self.classifiers['Top'] = make_node(None)
 
     def fit(self, features, files):
         for parent_node, classifier in self.classifiers.items():
@@ -124,23 +153,9 @@ class CascadeClassifier():
             y_set = set(y_pred)
         return y_pred
 
-#
-#skf = StratifiedKFold(n_splits = 4)
-#y = classes_from_files(files)
-#skf.get_n_splits(features, y)
-#accuracys =[]
-#balanced_accuracys = []
-#for train_ind, test_ind in skf.split(features, y):
-#    x_train, files_train = features[train_ind], np.array(files)[train_ind]
-#    x_test, files_test = features[test_ind], np.array(files)[test_ind]
-#    y_test = classes_from_files(files_test)
-#    cc.fit(x_train, files_train)
-#    y_pred = cc.predict(x_test)
-#    accuracys.append( accuracy_score(y_test, y_pred))
-#    balanced_accuracys.append( balanced_accuracy_score(y_test, y_pred))
 
     def cv_score(self, features, files, n_splits = 3):
-        skf = StratifiedKFold(n_splits = n_splits)
+        skf = StratifiedKFold(n_splits = n_splits, shuffle = True)
         y = classes_from_files(files)
         skf.get_n_splits(features, y)
         accuracys = {c: 0 for c in self.classifiers.keys()}
@@ -151,14 +166,17 @@ class CascadeClassifier():
         for train_ind, test_ind in skf.split(features, y):
             x_train, files_train = features[train_ind], np.array(files)[train_ind]
             x_test, files_test = features[test_ind], np.array(files)[test_ind]
-            x_train, x_test = normalize(x_train, x_test)
+            x_train, x_test = self.normalize(x_train, x_test)
             self.fit(x_train, files_train)
             y_pred = self.predict(x_test)
             y_test = classes_from_files(files_test)
             accuracy, balanced_accuracy = self.score(x_test, files_test)
             for classifier in self.classifiers.keys():
-                accuracys[classifier] = concat(accuracys, accuracy, classifier)
-                balanced_accuracys[classifier] = concat(balanced_accuracys, balanced_accuracy, classifier)
+                if classifier.constant_class is False:
+                    accuracys[classifier] = concat(accuracys,
+                             accuracy, classifier)
+                    balanced_accuracys[classifier] = concat(balanced_accuracys,
+                                      balanced_accuracy, classifier)
             overall_accuracys.append(accuracy_score(y_test, y_pred))
             overall_balanced.append( balanced_accuracy_score(y_test, y_pred))
         dict_divide = lambda d: {k: v/n_splits for k, v in d.items()}
@@ -186,10 +204,11 @@ class CascadeClassifier():
 
 
 def normalize(x1, x2 = None):
-    reg_coeffs = np.nan_to_num(x1.mean(axis = 0)/x1.std(axis = 0))
-    regularize = lambda v: v*reg_coeffs
-    if x2 is not None:
-        x2 = regularize(x2)
+    x1mean = x1.mean(axis = 0)
+    x1std = x1.std(axis = 0)
+    regularize = lambda v: np.nan_to_num((v - x1mean)/x1std)
+    if x2 is None:
+        return regularize(x1)
     return regularize(x1), regularize(x2)
 
 def classes_from_files(files, parent = None,  stop_nodes = None, depth = 100):

@@ -17,6 +17,7 @@ import pickle
 from sklearn.model_selection import train_test_split, cross_validate, StratifiedKFold
 from sklearn.metrics import accuracy_score, balanced_accuracy_score, f1_score
 from sklearn.ensemble import ExtraTreesClassifier
+from sklearn.svm import SVC
 from bag_of_words import *
 from classifiers import *
 
@@ -63,7 +64,8 @@ def print_feature_importances(generator, importances, plot = True):
         plt.show()
 
 def classwise_importances(x, y, generator, parent = None, show_all = True):
-    model = ExtraTreesClassifier( n_estimators = int(x.shape[1]**(1/3)) )
+    model = ExtraTreesClassifier( n_estimators = int(x.shape[1]**(1/2)),
+                                 max_depth = int(x.shape[1]/2))
     feature_names = generator.f_dict
     def show(x, y, name):
         xtrain, xtest, ytrain, ytest = train_test_split(x, y, stratify = y)
@@ -173,25 +175,34 @@ def save_universal_codebook(image_file = Constants.default_image_pickle):
 #files = load_pickle(Constants.default_file_pickle)
 #save_universal_codebook()
 
-
 generator = FeatureGenerator(denoise = False, crop = True,
                              remove_borders= True, bovw_codebook=Constants.codebook_file)
-features, files, images = get_featureset(generator, 1800, 18)
+features, files, images = get_featureset(generator, generator.num_images, int(generator.num_images/100))
 print('features done')
+
+save_to_pickle(features, Constants.default_feature_pickle)
+save_to_pickle(files, Constants.default_file_pickle)
+save_to_pickle(images, Constants.default_image_pickle)
+
 c = classes_from_files(files)
 print(classwise_importances(features, c, generator))
 
+li_cc = CascadeClassifier(SVC(kernel = 'linear'), feature_selection_method='info')
+li_a, li_ba = li_cc.cv_score(features, files, 5)
+print(li_a)
 
-from sklearn.svm import SVC
-rbf_cc = CascadeClassifier(SVC(kernel = 'rbf', gamma=1))
-rbf_a, rbc_ba = rbf_cc.cv_score(features, files)
+lb_cc = CascadeClassifier(SVC(kernel = 'rbf'), feature_selection_method='info')
+lb_a, lb_ba = lb_cc.cv_score(features, files, 5)
+print(lb_a)
 
-l_cc = CascadeClassifier(SVC(kernel = 'linear'))
-l_a, l_ba = l_cc.cv_score(features, files)
+eti_cc = CascadeClassifier(ExtraTreesClassifier(n_estimators = 500), feature_selection_method='info')
+eti_a, eti_ba = eti_cc.cv_score(features, files, 5)
+print(eti_a)
 
-et_cc = CascadeClassifier(ExtraTreesClassifier(n_estimators = 300))
-et_a, et_ba = et_cc.cv_score(features, files)
+etb_cc = CascadeClassifier(ExtraTreesClassifier(n_estimators = 500), feature_selection_method='boruta')
+etb_a, etb_ba = etb_cc.cv_score(features, files, 5)
+print(etb_a)
 
-#save_to_pickle(features, 'image_features_all')
-#save_to_pickle(files, 'image_files_all')
-#save_to_pickle(images, 'processes_images_all')
+etn_cc = CascadeClassifier(ExtraTreesClassifier(n_estimators = 500), feature_selection_method=None)
+etn_a, etn_ba = etn_cc.cv_score(features, files, 5)
+print(etn_a)
