@@ -148,7 +148,7 @@
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
-      <AdditionalIncludeDirectories>$(OPENCV_DIR)\..\..\include</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(OPENCV_DIR)\..\..\include;$(EIGEN_DIR);D:\git_repos\EigenC++</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -169,6 +169,7 @@
     <ClInclude Include="BagOfWords.h" />
     <ClInclude Include="Constants.h" />
     <ClInclude Include="ImageData.h" />
+    <ClInclude Include="nanoflann.hpp" />
     <ClInclude Include="Preprocess.h" />
     <ClInclude Include="resource.h" />
   </ItemGroup>

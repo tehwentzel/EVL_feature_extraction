@@ -18,6 +18,7 @@ map<cv::String, cv::Mat> createImageMap(cv::String parentPath = "D:\\git_repos\\
 void showImages( map<cv::String,cv::Mat> );
 void showImages(vector<cv::Mat>);
 vector<cv::Mat> matDictValues(map<cv::String, cv::Mat>);
+vector<string> stringDictKeys(map<cv::String, cv::Mat>);
 vector<cv::Mat> getDSIFTs(map<cv::String, cv::Mat>);
 vector<cv::Mat> getDSIFTs(vector<cv::Mat>);
 cv::Mat getRootDSIFT(cv::Mat);
@@ -28,13 +29,23 @@ int main(int argc, char** argv)
 	cv::String parentPath = "D:\\git_repos\\EVL_feature_extraction\\src\\data\\images\\";
 	auto imageMap = createImageMap(parentPath);
 	//showImages(imageMap);
+	cout << "getting dsifts..." << endl;
 	auto dSiftFeatures = getDSIFTs(imageMap);
-	auto codeBook = BagOfWords(dSiftFeatures);
+	cout << "dsifts finisehd" << endl;
+	//auto codeBook = BagOfWords(dSiftFeatures);
+	auto codeBook = BagOfWords(BOVW_FILE);
+	vector<vector<int>> bowFeatures;
+	for (auto& imageDSift : dSiftFeatures){
+		bowFeatures.push_back(codeBook.getWordCounts(imageDSift));
+	}
+	cout <<"BOW Done" << endl;
+	cv::FileStorage fs(FEATURE_DICT_FILE, cv::FileStorage::WRITE);
+	fs << "fileNames" << stringDictKeys(imageMap) << "siftBOVW" << bowFeatures;
+	fs.release();
 }
 
 vector<cv::Mat> getDSIFTs(map<cv::String, cv::Mat> imageMap) {
 	auto images = matDictValues(imageMap);
-	cout << "getting dsifts..." << endl;
 	return getDSIFTs(images);
 }
 
@@ -93,7 +104,8 @@ map<cv::String, cv::Mat> createImageMap(cv::String parentPath, bool denoise) {
 	for (auto& imageFile : filenames) {
 		image = cv::imread(imageFile);
 		if (!image.empty()) {
-			images.emplace(imageFile, preprocessImage(image, denoise));
+			preprocessImage(image, denoise);
+			images.emplace(imageFile, image);
 		}
 		else {
 			cout << imageFile << endl;
@@ -108,6 +120,14 @@ vector<cv::Mat> matDictValues(map<cv::String, cv::Mat> matMap) {
 		mats.push_back(it->second);
 	}
 	return mats;
+}
+
+vector<string> stringDictKeys(map<cv::String, cv::Mat> matMap) {
+	vector<string> files;
+	for (auto it = matMap.begin(); it != matMap.end(); it++) {
+		files.push_back(it->first);
+	}
+	return files;
 }
 
 void showImages(map<cv::String, cv::Mat> imageMap) {

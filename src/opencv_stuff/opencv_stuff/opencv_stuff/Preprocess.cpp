@@ -11,16 +11,16 @@
 
 using namespace std;
 
-cv::Mat resizeImage(cv::Mat image) {
+void resizeImage(cv::Mat& image) {
 	cv::Size s = image.size();
 	double wRatio = (float)imWidth / (float)s.width;
 	double hRatio = (float)imHeight / (float)s.height;
 	double ratio = (wRatio > hRatio) ? wRatio : hRatio;
 	cv::resize(image, image, cv::Size(), ratio, ratio, cv::INTER_AREA);
-	return image;
+	//return image;
 }
 
-cv::Mat cropImage(cv::Mat image) {
+void cropImage(cv::Mat& image) {
 	cv::Mat grayImg;
 	cv::cvtColor(image, grayImg, cv::COLOR_BGR2GRAY);
 	cv::dilate(grayImg, grayImg, cv::getStructuringElement(cv::MORPH_RECT, cv::Size(3, 3)));
@@ -32,7 +32,7 @@ cv::Mat cropImage(cv::Mat image) {
 		image = image(bbox);
 		//cout << image.size() << endl;
 	}
-	return image;
+	//return image;
 }
 
 cv::Rect deleteBorder(cv::Mat src, int size) {
@@ -70,9 +70,9 @@ cv::Rect deleteBorder(cv::Mat src, int size) {
 	return result;
 }
 
-cv::Mat preprocessImage(cv::Mat image, bool denoise) {
+void preprocessImage(cv::Mat& image, bool denoise) {
 	if (denoise) { cv::fastNlMeansDenoisingColored(image, image, 3, 3); }
-	image = cropImage(image);
-	image = resizeImage(image);
-	return image;
+	cropImage(image);
+	resizeImage(image);
+	//return image;
 }
