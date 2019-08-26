@@ -3,10 +3,13 @@
 #include <opencv2/core.hpp>
 #include <opencv2/flann.hpp>
 #include <Eigen/Dense>
+#include <opencv2/core/eigen.hpp>
+#include "Mrpt.h"
 
 using namespace std;
 
 BagOfWords::BagOfWords(vector<cv::Mat> points) {
+	
 	cv::Mat inputData = BagOfWords::hstackMats(points);
 	cout << inputData.size() << endl;
 	cvflann::KMeansIndexParams params(32, 11, cvflann::CENTERS_KMEANSPP);
@@ -30,9 +33,10 @@ BagOfWords::BagOfWords(string dataFile) {
 }
 
 void BagOfWords::initIndex(cv::Mat& centers) {
-	//cv::flann::AutotunedIndexParams indexParams(.98);
-	cv::flann::KDTreeIndexParams indexParams(4);
-	wordIndex.reset(new cv::flann::Index(centers, indexParams, cvflann::FLANN_DIST_EUCLIDEAN));
+	Eigen::Matrix<float, Eigen::Dynamic, Eigen::Dynamic> eigenMat;
+	cv::cv2eigen(centers, eigenMat);
+	wordIndex.reset(new Mrpt(eigenMat));
+	wordIndex -> grow_autotune(ANN_RECALL, 1);
 }
 
 bool BagOfWords::saveData(cv::Mat allpoints, cv::Mat centers, string dataFile) {
@@ -50,19 +54,17 @@ bool BagOfWords::saveData(cv::Mat allpoints, cv::Mat centers, string dataFile) {
 }
 
 vector<int> BagOfWords::getWordCounts(cv::Mat& queryFeatures) {
-	vector<double> currentRow(queryFeatures.cols);
-	vector<int> currentWord(1);
-	vector<float> currentDistance(1);
+	Eigen::Matrix<float, Eigen::Dynamic, Eigen::Dynamic> eigenQuery;
+	cv::cv2eigen(queryFeatures, eigenQuery);
+	int num_words = queryFeatures.size().height;
+	int current_word = 0;
 	vector<int> wordCounts(DSIFT_TOTAL_CLUSTERS);
-	cv::flann::SearchParams params(32);
-	for (int r = 0; r < queryFeatures.rows; r++) {
-		queryFeatures.row(r).copyTo(currentRow);
-		wordIndex->knnSearch(currentRow, currentWord, currentDistance, 1, params);
-		cout << currentWord[0] << ' ';
-		wordCounts[currentWord[0]]++;
+	for (int i = 0; i < queryFeatures.rows; i++) {
+		auto row = eigenQuery.row(i);
+		cout << row << endl;
+		//wordIndex->query(row.data(), current_word);
+		//cout << current_word << endl;
 	}
-	cout << endl;
-	return wordCounts;
 }
 
 //cv::Mat BagOfWords::getWordCounts(cv::Mat& queryFeatures) {

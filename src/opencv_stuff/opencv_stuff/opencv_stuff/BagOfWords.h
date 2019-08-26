@@ -3,6 +3,8 @@
 #include <opencv2/core.hpp>
 #include <opencv2/flann.hpp>
 #include "Constants.h"
+#include "Mrpt.h"
+
 class BagOfWords
 {
 	public:
@@ -13,7 +15,7 @@ class BagOfWords
 		bool saveData(cv::Mat, cv::Mat, std::string dataFile = BOVW_FILE);
 
 	private:
-		std::unique_ptr<cv::flann::Index> wordIndex;
+		std::unique_ptr<Mrpt> wordIndex;
 		cv::Mat hstackMats(std::vector<cv::Mat>);
 		void initIndex(cv::Mat&);
 		//void argsToCounts(cv::Mat&, cv::Mat&);

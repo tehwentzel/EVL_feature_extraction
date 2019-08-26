@@ -44,7 +44,7 @@
     <ClInclude Include="BagOfWords.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="nanoflann.hpp">
+    <ClInclude Include="Mrpt.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
