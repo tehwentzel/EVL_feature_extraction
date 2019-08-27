@@ -27,6 +27,12 @@
     <ClCompile Include="BagOfWords.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="KDTree.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="FuzzyFeatures.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Constants.h">
@@ -44,7 +50,13 @@
     <ClInclude Include="BagOfWords.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="Mrpt.h">
+    <ClInclude Include="KDTree.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="json.hpp">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="FuzzyFeatures.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

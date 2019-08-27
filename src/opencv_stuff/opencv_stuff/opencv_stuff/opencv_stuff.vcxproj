@@ -161,15 +161,19 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="BagOfWords.cpp" />
+    <ClCompile Include="FuzzyFeatures.cpp" />
     <ClCompile Include="ImageData.cpp" />
+    <ClCompile Include="KDTree.cpp" />
     <ClCompile Include="opencv_stuff.cpp" />
     <ClCompile Include="Preprocess.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="BagOfWords.h" />
     <ClInclude Include="Constants.h" />
+    <ClInclude Include="FuzzyFeatures.h" />
     <ClInclude Include="ImageData.h" />
-    <ClInclude Include="Mrpt.h" />
+    <ClInclude Include="json.hpp" />
+    <ClInclude Include="KDTree.h" />
     <ClInclude Include="Preprocess.h" />
     <ClInclude Include="resource.h" />
   </ItemGroup>

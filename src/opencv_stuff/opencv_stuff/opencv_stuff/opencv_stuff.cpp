@@ -5,13 +5,16 @@
 #include <opencv2/xfeatures2d/nonfree.hpp>
 #include <opencv2/xfeatures2d.hpp>
 #include <iostream>
+#include <fstream>
 #include <string>
+#include "json.hpp"
 #include <map>
 #include "Constants.h"
 #include "Preprocess.h"
 #include "BagOfWords.h"
 
 using namespace std;
+using json = nlohmann::json;
 
 map<cv::String, cv::Mat> createImageMap(cv::String parentPath = "D:\\git_repos\\EVL_feature_extraction\\src\\data\\images\\",
 	bool denoise = false);
@@ -23,25 +26,47 @@ vector<cv::Mat> getDSIFTs(map<cv::String, cv::Mat>);
 vector<cv::Mat> getDSIFTs(vector<cv::Mat>);
 cv::Mat getRootDSIFT(cv::Mat);
 cv::Mat rootKernel(cv::Mat);
+json extractFeatures(map<cv::String, cv::Mat>, BagOfWords&);
+json getSingleImageJson(cv::Mat&, BagOfWords&);
+cv::Mat getSingleDSIFT(cv::Mat&);
+void saveJson(json, std::string = FEATURE_JSON_FILE);
 
 int main(int argc, char** argv)
 {
 	cv::String parentPath = "D:\\git_repos\\EVL_feature_extraction\\src\\data\\images\\";
+	auto codeBook = BagOfWords(BOVW_FILE + std::to_string(DSIFT_TOTAL_CLUSTERS) + ".txt");
 	auto imageMap = createImageMap(parentPath);
 	//showImages(imageMap);
-	cout << "getting dsifts..." << endl;
-	auto dSiftFeatures = getDSIFTs(imageMap);
-	cout << "dsifts finisehd" << endl;
-	//auto codeBook = BagOfWords(dSiftFeatures);
-	auto codeBook = BagOfWords(BOVW_FILE);
-	vector<vector<int>> bowFeatures;
-	for (auto& imageDSift : dSiftFeatures){
-		bowFeatures.push_back(codeBook.getWordCounts(imageDSift));
-	}
+	json data = extractFeatures(imageMap, codeBook);
 	cout <<"BOW Done" << endl;
-	cv::FileStorage fs(FEATURE_DICT_FILE, cv::FileStorage::WRITE);
-	fs << "fileNames" << stringDictKeys(imageMap) << "siftBOVW" << bowFeatures;
-	fs.release();
+	saveJson(data);
+	//cv::FileStorage fs(FEATURE_DICT_FILE + std::to_string(DSIFT_TOTAL_CLUSTERS) + ".txt", cv::FileStorage::WRITE);
+	//fs << "fileNames" << stringDictKeys(imageMap) << "siftBOVW" << bowFeatures;
+	//fs.release();
+}
+
+void saveJson(json toWrite, std::string fileName) {
+	ofstream file;
+	file.open(fileName);
+	file << toWrite.dump(4) << endl;
+	file.close();
+	cout << "file successfully saved to " << fileName;
+}
+
+json extractFeatures(map<cv::String, cv::Mat> imageMap, BagOfWords& codeBook) {
+	json imageJson;
+	for (auto& item : imageMap) {
+		json newImage = getSingleImageJson(item.second, codeBook);
+		imageJson[item.first] = newImage;
+	}
+	return imageJson;
+}
+
+json getSingleImageJson(cv::Mat& image, BagOfWords& codeBook) {
+	json features;
+	auto dsift = getSingleDSIFT(image);
+	features["BOVW"] = codeBook.getWordCounts(dsift);
+	return features;
 }
 
 vector<cv::Mat> getDSIFTs(map<cv::String, cv::Mat> imageMap) {
@@ -49,16 +74,21 @@ vector<cv::Mat> getDSIFTs(map<cv::String, cv::Mat> imageMap) {
 	return getDSIFTs(images);
 }
 
+cv::Mat getSingleDSIFT(cv::Mat& image) {
+	cv::Mat centers(DSIFT_QUANTIZE_SIZE, 128, CV_32F);
+	cv::Mat labels(900 * DSIFT_STEP, 1, CV_32F);  //doesnt' do anything
+	auto descriptors = getRootDSIFT(image);
+	cv::kmeans(descriptors, DSIFT_QUANTIZE_SIZE, labels,
+		//for this the last term is eps and 2nd term is max_itter
+		cv::TermCriteria(cv::TermCriteria::EPS + cv::TermCriteria::COUNT, 1000, .00001),
+		3, cv::KMEANS_PP_CENTERS, centers);
+	return centers;
+}
+
 vector<cv::Mat> getDSIFTs(vector<cv::Mat> images) {
 	vector<cv::Mat> features;
-	cv::Mat labels(900*DSIFT_STEP, 1, CV_32F);
-	cv::Mat centers(DSIFT_QUANTIZE_SIZE, 128, CV_32F);
 	for (auto& image : images) {
-		auto descriptors = getRootDSIFT(image);
-		cv::kmeans(descriptors, DSIFT_QUANTIZE_SIZE, labels,
-			//for this the last term is eps and 2nd term is max_itter
-			cv::TermCriteria(cv::TermCriteria::EPS + cv::TermCriteria::COUNT, 600, .00001),
-			3, cv::KMEANS_PP_CENTERS, centers);
+		auto centers = getSingleDSIFT(image);
 		features.push_back(centers);
 	}
 	return features;

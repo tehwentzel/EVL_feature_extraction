@@ -4,8 +4,6 @@
 #include <opencv2/flann.hpp>
 #include <Eigen/Dense>
 #include <opencv2/core/eigen.hpp>
-#include "Mrpt.h"
-
 using namespace std;
 
 BagOfWords::BagOfWords(vector<cv::Mat> points) {
@@ -18,9 +16,9 @@ BagOfWords::BagOfWords(vector<cv::Mat> points) {
 	cv::flann::hierarchicalClustering<cv::flann::L2<float>>(inputData, centers, params);
 	initIndex(centers);
 
-	//cout << "flann clustering done" << endl;
-	//saveData(inputData, centers);
-	//cout << "data saved" << endl;
+	cout << "flann clustering done" << endl;
+	saveData(inputData, centers);
+	cout << "data saved" << endl;
 };
 
 BagOfWords::BagOfWords(string dataFile) {
@@ -33,16 +31,20 @@ BagOfWords::BagOfWords(string dataFile) {
 }
 
 void BagOfWords::initIndex(cv::Mat& centers) {
-	Eigen::Matrix<float, Eigen::Dynamic, Eigen::Dynamic> eigenMat;
-	cv::cv2eigen(centers, eigenMat);
-	wordIndex.reset(new Mrpt(eigenMat));
-	wordIndex -> grow_autotune(ANN_RECALL, 1);
+	vector<vector<double>> points;
+	vector<double> currentRow(DSIFT_TOTAL_CLUSTERS);
+	cout << "num rows" << centers.rows << endl;
+	for (int rowIdx = 0; rowIdx < centers.rows; rowIdx++) {
+		centers.row(rowIdx).copyTo(currentRow);
+		points.push_back(currentRow);
+	}
+	wordIndex.reset(new KDTree(points));
 }
 
 bool BagOfWords::saveData(cv::Mat allpoints, cv::Mat centers, string dataFile) {
 	bool success = true;
 	try {
-		cv::FileStorage fs(dataFile, cv::FileStorage::WRITE);
+		cv::FileStorage fs(dataFile+std::to_string(DSIFT_TOTAL_CLUSTERS)+".txt", cv::FileStorage::WRITE);
 		fs << "centers" << centers << "allpoints" << allpoints;
 		fs.release();
 	}
@@ -54,47 +56,19 @@ bool BagOfWords::saveData(cv::Mat allpoints, cv::Mat centers, string dataFile) {
 }
 
 vector<int> BagOfWords::getWordCounts(cv::Mat& queryFeatures) {
-	Eigen::Matrix<float, Eigen::Dynamic, Eigen::Dynamic> eigenQuery;
-	cv::cv2eigen(queryFeatures, eigenQuery);
-	int num_words = queryFeatures.size().height;
-	int current_word = 0;
+	cout << "shape " << queryFeatures.size << endl;
 	vector<int> wordCounts(DSIFT_TOTAL_CLUSTERS);
+	vector<double> currentWord;
+	int currentWordIndex;
 	for (int i = 0; i < queryFeatures.rows; i++) {
-		auto row = eigenQuery.row(i);
-		cout << row << endl;
-		//wordIndex->query(row.data(), current_word);
-		//cout << current_word << endl;
+		queryFeatures.row(i).copyTo(currentWord);
+		currentWordIndex = wordIndex->nearest_index(currentWord);
+		cout << currentWordIndex << " ";
+		wordCounts.at(currentWordIndex)++;
 	}
+	cout << endl;
+	return wordCounts;
 }
-
-//cv::Mat BagOfWords::getWordCounts(cv::Mat& queryFeatures) {
-//	cv::Mat indices(queryFeatures.rows, 1, CV_16U);
-//	cv::Mat dists(queryFeatures.rows, 1, CV_32F);
-//	cv::Mat wordCounts = cv::Mat::zeros(cv::Size(DSIFT_TOTAL_CLUSTERS, 1), CV_16U);
-//	try {
-//		cv::flann::SearchParams params;//with autotuned params the argument is ignored
-//		wordIndex->knnSearch(queryFeatures, indices, dists, 1, params);
-//		cout << indices.at<int>(0, 0) << ' ' << dists.at<int>(0,0) << endl;
-//		argsToCounts(indices, wordCounts);
-//		cout << wordCounts.at<int>(0,0) << ' ' << wordCounts.at<int>(0, 10) << endl;
-//	}
-//	catch (cv::Exception& e) {
-//		cout << e.what() << endl;
-//	}
-//	return wordCounts;
-//};
-//
-//void BagOfWords::argsToCounts(cv::Mat& indices, cv::Mat& words) {
-//	for (int i = 0; i < indices.rows; i++) {
-//		try {
-//			auto arg = indices.at<int>(i,0);
-//			words.at<int>(0, arg)++;
-//		}
-//		catch (cv::Exception& e) {
-//			cout << e.what() << endl;
-//		}
-//	}
-//}
 
 cv::Mat BagOfWords::hstackMats(std::vector<cv::Mat> data) {
 	cv::Mat imageSet;
