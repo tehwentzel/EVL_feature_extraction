@@ -33,7 +33,7 @@ vector<double> getCrispHistogram(cv::Mat image, int histSize) {
 		cv::calcHist(&channel, 1, 0, cv::Mat(), hist, 1, &histSize, histRange, true, false);
 		cv::normalize(hist, normalizedHist, 1.0, 0.0, cv::NORM_L1);
 		for (auto& value : normalizedHist) {
-			//cout << value << ' ';
+			cout << value << ' ';
 			combinedHist.push_back(value);
 		}
 	}
@@ -49,19 +49,24 @@ void checkNormalized(cv::Mat& imgChannel) {
 	}
 }
 
-
 vector<double> standardColorSpaceHistograms(cv::Mat& image, int histSize) {
+	return standardHistograms(image, getCrispHistogram, histSize);
+}
+
+vector<double> standardHistograms(cv::Mat& image, function<vector<double>(cv::Mat, int)> histFunction, int histSize) {
 	vector<int> colorSpaces = { cv::COLOR_BGR2HSV, cv::COLOR_BGR2HLS, cv::COLOR_BGR2Lab };
 	cv::Mat convertedImage;
 
 	vector<vector<double>> allHists;
-	//for (auto& colorCode : colorSpaces) {
-	//	cv::cvtColor(image, convertedImage, colorCode);
-	//	auto colorHist = getCrispHistogram(convertedImage, histSize);
-	//	allHists.push_back(colorHist);
-	//}
-	//allHists.push_back(getCrispHistogram(image));
-	allHists.push_back(getCrispHistogram(BGRToOpponentColorSpace(image)));
+	for (auto& colorCode : colorSpaces) {
+		cv::cvtColor(image, convertedImage, colorCode);
+		auto colorHist = histFunction(convertedImage, histSize);
+		allHists.push_back(colorHist);
+	}
+	cout << endl;
+	allHists.push_back(histFunction(image, histSize));
+	cout << endl;
+	allHists.push_back(histFunction(BGRToOpponentColorSpace(image), histSize));
 	return stack<double>(allHists);
 }
 
@@ -81,7 +86,6 @@ cv::Mat BGRToOpponentColorSpace(const cv::Mat& bgrImage){
 			oPixel[0] = cv::saturate_cast<uchar>(0.5f * (255 + g - r)); // (R - G)/sqrt(2)
 			oPixel[1] = cv::saturate_cast<uchar>(0.25f * (510 + r + g - 2 * b)); // (R + G - 2B)/sqrt(6)
 			oPixel[2] = cv::saturate_cast<uchar>(1.f / 3.f * (r + g + b)); // (R + G + B)/sqrt(3)
-			cout << bgrPixel << ' ' << oPixel << endl;
 		}
 	return targetImage;
 }
