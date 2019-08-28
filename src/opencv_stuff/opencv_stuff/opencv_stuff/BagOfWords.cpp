@@ -56,17 +56,17 @@ bool BagOfWords::saveData(cv::Mat allpoints, cv::Mat centers, string dataFile) {
 }
 
 vector<int> BagOfWords::getWordCounts(cv::Mat& queryFeatures) {
-	cout << "shape " << queryFeatures.size << endl;
+	//cout << "shape " << queryFeatures.size << endl;
 	vector<int> wordCounts(DSIFT_TOTAL_CLUSTERS);
 	vector<double> currentWord;
 	int currentWordIndex;
 	for (int i = 0; i < queryFeatures.rows; i++) {
 		queryFeatures.row(i).copyTo(currentWord);
 		currentWordIndex = wordIndex->nearest_index(currentWord);
-		cout << currentWordIndex << " ";
+		//cout << currentWordIndex << " ";
 		wordCounts.at(currentWordIndex)++;
 	}
-	cout << endl;
+	//cout << endl;
 	return wordCounts;
 }
 

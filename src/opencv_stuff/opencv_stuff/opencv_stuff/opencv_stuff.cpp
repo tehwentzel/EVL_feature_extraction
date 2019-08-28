@@ -12,6 +12,7 @@
 #include "Constants.h"
 #include "Preprocess.h"
 #include "BagOfWords.h"
+#include "FuzzyFeatures.h"
 
 using namespace std;
 using json = nlohmann::json;
@@ -33,9 +34,17 @@ void saveJson(json, std::string = FEATURE_JSON_FILE);
 
 int main(int argc, char** argv)
 {
-	cv::String parentPath = "D:\\git_repos\\EVL_feature_extraction\\src\\data\\images\\";
-	auto codeBook = BagOfWords(BOVW_FILE + std::to_string(DSIFT_TOTAL_CLUSTERS) + ".txt");
+	cv::String parentPath = "D:\\git_repos\\EVL_feature_extraction\\src\\data\\images\\Experimental\\Microscopy\\";
 	auto imageMap = createImageMap(parentPath);
+	BagOfWords codeBook;
+	if (std::ifstream(BOVW_FILE + std::to_string(DSIFT_TOTAL_CLUSTERS) + ".txt")) {
+		codeBook = BagOfWords(BOVW_FILE + std::to_string(DSIFT_TOTAL_CLUSTERS) + ".txt");
+	}
+	else {
+		cout << "creating new bagofwords" << endl;
+		auto dSIFTs = getDSIFTs(imageMap);
+		codeBook = BagOfWords(dSIFTs);
+	}
 	//showImages(imageMap);
 	json data = extractFeatures(imageMap, codeBook);
 	cout <<"BOW Done" << endl;
@@ -66,6 +75,7 @@ json getSingleImageJson(cv::Mat& image, BagOfWords& codeBook) {
 	json features;
 	auto dsift = getSingleDSIFT(image);
 	features["BOVW"] = codeBook.getWordCounts(dsift);
+	features["CrispHistograms"] = standardColorSpaceHistograms(image);
 	return features;
 }
 

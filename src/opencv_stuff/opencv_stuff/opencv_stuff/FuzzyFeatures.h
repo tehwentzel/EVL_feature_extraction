@@ -2,9 +2,13 @@
 
 #include <opencv2/core.hpp>
 #include <vector>
+#include "Constants.h"
+#include <opencv2/core.hpp>
 
-std::vector<double> stack(std::vector<std::vector<double>>) {
+template <class T>
+std::vector<T> stack(std::vector<std::vector<T>>);
 
-}
-
-
+std::vector<double> getCrispHistogram(cv::Mat image, int histSize = CRISP_HISTSIZE);
+std::vector<double> standardColorSpaceHistograms(cv::Mat& image, int histSize= CRISP_HISTSIZE);
+cv::Mat BGRToOpponentColorSpace(const cv::Mat&);
+void checkNormalized(cv::Mat&);
